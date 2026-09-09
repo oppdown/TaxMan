@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3 - 2026-09-09
+
+- Moved File, Edit, View, and Help into the single native Windows application menu.
+- Restored backups now select a year containing imported transactions when needed.
+- Added an integration smoke test that restores a JSON file, verifies the visible ledger, and verifies the data after restart.
+
 ## 0.2.2 - 2026-09-09
 
 - Restored backup data now immediately repopulates the open app.

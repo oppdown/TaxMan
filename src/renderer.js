@@ -2,27 +2,22 @@
 
 const TAX_YEAR = 2025;
 const NEW_COMPANY = '__create__';
-const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, companyModal: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, appVersion: '0.2.2', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
+const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, companyModal: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, appVersion: '0.2.3', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
 
 document.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
-  try { state.store = await window.taxLedger.loadStore(); state.selectedYear = state.store.taxYear || 2025; state.appVersion = await window.taxLedger.getVersion(); render(); }
+  if (window.taxLedger.onMenuAction) window.taxLedger.onMenuAction((action) => handleAction(action));
+  try { state.store = await window.taxLedger.loadStore(); state.selectedYear = bestYearForStore(state.store, state.store.taxYear || 2025); state.appVersion = await window.taxLedger.getVersion(); render(); }
   catch (error) { renderFatal(error); }
 });
 
 function bindEvents() {
   document.addEventListener('click', async (event) => {
     const nav = event.target.closest('[data-view]');
-    if (nav) { state.view = nav.dataset.view; state.openMenu = null; if (state.view !== 'transactions') state.transactionDraft = null; render(); return; }
-    const menu = event.target.closest('[data-menu]');
-    if (menu) { state.openMenu = state.openMenu === menu.dataset.menu ? null : menu.dataset.menu; render(); return; }
+    if (nav) { navigateTo(nav.dataset.view); return; }
     const action = event.target.closest('[data-action]');
     if (!action) return;
     await handleAction(action.dataset.action, action);
-  });
-  document.addEventListener('mouseover', (event) => {
-    const menu = event.target.closest('[data-menu]');
-    if (menu && state.openMenu && state.openMenu !== menu.dataset.menu) { state.openMenu = menu.dataset.menu; render(); }
   });
   document.addEventListener('submit', async (event) => {
     const formId = event.target?.getAttribute?.('id');
@@ -68,6 +63,7 @@ function bindEvents() {
 }
 
 async function handleAction(action, element) {
+  if (action?.startsWith('view-')) { navigateTo(action.slice('view-'.length)); return; }
   if (action === 'show-add') openTransaction('expense');
   if (action === 'show-add-income') openTransaction('income');
   if (action === 'cancel-form') { state.transactionDraft = null; render(); }
@@ -99,8 +95,14 @@ function render() {
   document.getElementById('year-eyebrow').textContent = `${state.selectedYear} tax preparation`;
   populateYearSelector();
   document.getElementById('view-root').innerHTML = state.view === 'dashboard' ? renderDashboard() : state.view === 'transactions' ? renderTransactions() : state.view === 'companies' ? renderCompanies() : renderReports();
-  document.querySelectorAll('[data-menu-popup]').forEach((popup) => { popup.hidden = popup.dataset.menuPopup !== state.openMenu; });
   document.getElementById('modal-root').innerHTML = state.companyModal ? renderCompanyModal() : state.aboutOpen ? renderAboutModal() : state.shortcutsOpen ? renderShortcutsModal() : '';
+}
+
+function navigateTo(view) {
+  state.view = view;
+  state.openMenu = null;
+  if (state.view !== 'transactions') state.transactionDraft = null;
+  render();
 }
 
 function populateYearSelector() {
@@ -108,6 +110,12 @@ function populateYearSelector() {
   if (!select) return;
   const years = new Set([2024, 2025, 2026, 2027, new Date().getFullYear(), ...state.store.transactions.map((transaction) => transaction.taxYear)]);
   select.innerHTML = [...years].filter((year) => Number.isInteger(year)).sort((a, b) => a - b).map((year) => `<option value="${year}" ${Number(year) === Number(state.selectedYear) ? 'selected' : ''}>${year}</option>`).join('');
+}
+
+function bestYearForStore(store, preferredYear) {
+  const preferred = Number(preferredYear);
+  const years = [...new Set((store.transactions || []).map((transaction) => Number(transaction.taxYear)).filter((year) => Number.isInteger(year)))];
+  return years.includes(preferred) || !years.length ? (Number.isInteger(preferred) ? preferred : TAX_YEAR) : Math.max(...years);
 }
 
 function renderFatal(error) {
@@ -285,9 +293,9 @@ async function restoreJson() {
     const result = await window.taxLedger.importJson();
     if (!result.canceled) {
       const importedStore = result.store;
-      await window.taxLedger.saveStore(importedStore);
-      state.store = importedStore;
-      state.selectedYear = state.store.taxYear || 2025;
+      const savedStore = await window.taxLedger.saveStore(importedStore);
+      state.store = savedStore && Array.isArray(savedStore.transactions) ? savedStore : importedStore;
+      state.selectedYear = bestYearForStore(state.store, state.store.taxYear || 2025);
       state.lastPdfPath = '';
       state.lastCsvPath = '';
       state.lastBackupPath = '';

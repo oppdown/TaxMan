@@ -5,7 +5,9 @@ const { createEmptyStore } = require('../src/core.cjs');
 
 let testStore = createEmptyStore();
 const restoredStore = createEmptyStore();
-restoredStore.transactions.push({ id: 'restored-income', taxYear: 2025, date: '2025-12-31', type: 'income', companyId: 'company-theitsupportcenter', categoryId: 'income-freelance', description: 'Restored income', amountCents: 32100, businessUsePercent: null, homeOfficeRelated: false, notes: '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+restoredStore.taxYear = 2025;
+restoredStore.transactions.push({ id: 'restored-income', taxYear: 2026, date: '2026-09-08', type: 'income', companyId: 'company-theitsupportcenter', categoryId: 'income-freelance', description: 'Restored income', amountCents: 32100, businessUsePercent: null, homeOfficeRelated: false, notes: '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+let menuActionCallback;
 
 contextBridge.exposeInMainWorld('taxLedger', {
   loadStore: async () => testStore,
@@ -15,5 +17,7 @@ contextBridge.exposeInMainWorld('taxLedger', {
   exportCsv: async () => ({ canceled: false, path: 'test-ledger.csv' }),
   exportPdf: async () => ({ canceled: false, path: 'test-report.pdf' }),
   openFolder: async () => {},
-  getVersion: async () => '0.2.2'
+  getVersion: async () => '0.2.3',
+  onMenuAction: (callback) => { menuActionCallback = callback; },
+  testEmitMenuAction: async (action) => menuActionCallback?.(action)
 });

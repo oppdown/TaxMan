@@ -13,7 +13,7 @@ async function main() {
     const set = (id, value) => { const element = document.getElementById(id); element.value = value; element.dispatchEvent(new Event('input', { bubbles: true })); element.dispatchEvent(new Event('change', { bubbles: true })); };
     const submit = async (id) => { document.getElementById(id).dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait(); };
     const checks = {};
-    checks.singleFevMenu = document.querySelectorAll('.menu-bar').length === 1;
+    checks.singleFevMenu = document.querySelectorAll('.menu-bar').length === 0;
 
     document.getElementById('quick-add').click(); await wait();
     checks.quickAddOpensForm = Boolean(document.getElementById('transaction-form'));
@@ -48,13 +48,13 @@ async function main() {
     await submit('company-form');
     checks.companyEditStaysInDirectory = document.getElementById('page-title').textContent === 'Companies & Sources' && document.body.textContent.includes('Smoke Company Updated');
 
-    document.querySelector('[data-menu="help"]').click(); await wait();
-    checks.helpMenuOpens = !document.querySelector('[data-menu-popup="help"]').hidden;
-    document.querySelector('[data-action="show-about"]').click(); await wait();
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.2.2');
+    await window.taxLedger.testEmitMenuAction('show-about'); await wait();
+    checks.helpMenuOpens = Boolean(document.querySelector('[aria-labelledby="about-title"]'));
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.2.3');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
+    await window.taxLedger.testEmitMenuAction('view-reports'); await wait();
+    checks.nativeViewActionWorks = document.getElementById('page-title').textContent === 'Reports & Backup';
 
-    document.querySelector('[data-view="reports"]').click(); await wait();
     checks.reportActionsPresent = ['export-pdf', 'export-csv', 'backup-json', 'restore-json'].every((action) => Boolean(document.querySelector('[data-action="' + action + '"]')));
     document.querySelector('[data-action="export-pdf"]').click(); await wait();
     checks.pdfNoticeStaysWithReport = document.body.textContent.includes('PDF saved to test-report.pdf') && !document.querySelector('[data-action="backup-json"]').closest('.panel').textContent.includes('test-report.pdf');
@@ -63,7 +63,7 @@ async function main() {
     window.confirm = () => true;
     document.querySelector('[data-action="restore-json"]').click(); await wait();
     document.querySelector('[data-view="transactions"]').click(); await wait();
-    checks.restorePopulatesLedger = document.body.textContent.includes('Restored income') && document.body.textContent.includes('$321.00');
+    checks.restorePopulatesLedger = document.body.textContent.includes('Restored income') && document.body.textContent.includes('$321.00') && document.getElementById('year-select')?.value === '2026';
     document.querySelector('[data-view="companies"]').click(); await wait();
     checks.clearCompanyButtonPresent = Boolean(document.querySelector('[data-action="clear-companies"]'));
     return checks;

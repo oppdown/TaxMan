@@ -1,9 +1,10 @@
 'use strict';
 
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell, Menu } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { buildReportHtml, normalizeStore, validateStore, serializeCsv } = require('./core.cjs');
+const { createApplicationMenuTemplate } = require('./menu.cjs');
 
 const DATA_FILE = 'data.json';
 const BACKUP_FILE = 'data.backup.json';
@@ -11,6 +12,10 @@ let mainWindow;
 
 function dataPath() { return path.join(app.getPath('userData'), DATA_FILE); }
 function backupPath() { return path.join(app.getPath('userData'), BACKUP_FILE); }
+
+function sendMenuAction(action) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('menu:action', action);
+}
 
 async function readStore() {
   try {
@@ -82,6 +87,7 @@ function registerIpc() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({ width: 1440, height: 940, minWidth: 1080, minHeight: 720, backgroundColor: '#eef3f8', title: 'Tax Ledger', icon: path.join(__dirname, 'assets', 'tax-ledger-favicon-preview.png'), webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false } });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(createApplicationMenuTemplate(sendMenuAction)));
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 }
 
