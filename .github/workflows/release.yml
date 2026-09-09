@@ -27,7 +27,7 @@ jobs:
         run: npm ci
 
       - name: Build installer and portable executable
-        run: npm run dist
+        run: npm run dist -- --publish never
 
       - name: Attach Windows packages to the release
         uses: softprops/action-gh-release@v2
