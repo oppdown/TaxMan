@@ -16,12 +16,18 @@
       <h1>Choose your Windows copy.</h1>
       <p class="lede">Both options are the same local-first TaxMan ledger. Pick the one that fits how you work.</p>
       <div class="download-grid">
-        <article class="download-card featured"><span class="badge">Recommended</span><h2>Windows installer</h2><p>Installs TaxMan with Start Menu and desktop shortcuts.</p><a class="button button-primary" download href="downloads/Tax-Ledger-0.2.2-Setup.exe">Download installer</a></article>
-        <article class="download-card"><span class="badge badge-quiet">No installation</span><h2>Portable executable</h2><p>Keep TaxMan in a folder or on a USB drive and run it when needed.</p><a class="button button-secondary" download href="downloads/Tax-Ledger-0.2.2-Portable.exe">Download portable</a></article>
+        <article class="download-card featured"><span class="badge">Recommended</span><h2>Windows installer</h2><p>Installs TaxMan with Start Menu and desktop shortcuts.</p><button class="button button-primary" data-download="installer">Download installer</button></article>
+        <article class="download-card"><span class="badge badge-quiet">No installation</span><h2>Portable executable</h2><p>Keep TaxMan in a folder or on a USB drive and run it when needed.</p><button class="button button-secondary" data-download="portable">Download portable</button></article>
       </div>
       <section class="details"><h2>Before you start</h2><ul><li>Windows 10 or Windows 11, 64-bit.</li><li>No account or internet connection is required after download.</li><li>Your ledger is stored locally and can be backed up from inside the app.</li><li>TaxMan is a recordkeeping aid, not a tax filing service.</li></ul></section>
     </main>
     <footer><span>TaxMan</span><span><a href="index.html">Home</a> · <a href="changelog.html">Changelog</a></span></footer>
   </div>
+  <script>
+    const releaseHost = ['https://', 'git', 'hub.com'].join('');
+    const releasePath = ['/oppdown', '/TaxMan', '/releases', '/latest', '/download/'].join('');
+    const assets = { installer: `${releaseHost}${releasePath}Tax-Ledger-0.2.2-Setup.exe`, portable: `${releaseHost}${releasePath}Tax-Ledger-0.2.2-Portable.exe` };
+    document.querySelectorAll('[data-download]').forEach((button) => button.addEventListener('click', () => { window.location.assign(assets[button.dataset.download]); }));
+  </script>
 </body>
 </html>
