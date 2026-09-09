@@ -1,5 +1,7 @@
 # Tax Ledger
 
+![TaxMan icon](src/assets/taxman-icon.png)
+
 Local Windows desktop ledger for preparing income and expenditure records for a tax preparer. Version 0.2.3 is multi-year and local-only.
 
 ## Use
@@ -11,6 +13,8 @@ Local Windows desktop ledger for preparing income and expenditure records for a 
 5. Use Help > Keyboard shortcuts for faster entry. The Companies & Sources page includes a guarded Clear company data control for setup cleanup.
 
 The app stores records locally on the computer. It does not connect to a cloud service or submit tax forms. The report is a recordkeeping aid; final tax treatment must be confirmed by the tax preparer.
+
+The TAXMAN icon is stored at `src/assets/taxman-icon.png` and is reused by the Windows app, installer, public site, and documentation.
 
 ## Development
 
