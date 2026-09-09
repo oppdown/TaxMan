@@ -3,9 +3,18 @@ name: Build Windows release assets
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to build and attach
+        required: true
+        default: v0.2.1
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
 
 jobs:
   windows-release:
@@ -15,7 +24,7 @@ jobs:
       - name: Check out the release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -32,7 +41,7 @@ jobs:
       - name: Attach Windows packages to the release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ env.RELEASE_TAG }}
           files: |
             dist/Tax-Ledger-*-Setup.exe
             dist/Tax-Ledger-*-Portable.exe
