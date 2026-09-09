@@ -1,6 +1,6 @@
 {
   "name": "tax-ledger-2025",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Local income and expenditure ledger for tax preparation",
   "main": "src/main.cjs",
   "author": "Local Tax Ledger",

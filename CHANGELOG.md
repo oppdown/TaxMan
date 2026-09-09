@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2 - 2026-09-09
+
+- Restored backup data now immediately repopulates the open app.
+- Empty ledgers no longer show the unnecessary back-up-first restore warning.
+- Moved toast notifications to the lower-right corner.
+- Kept one File / Edit / View / Help menu bar.
+
 ## 0.2.1 - 2026-09-09
 
 - Added File -> Save and Save As.

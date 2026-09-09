@@ -13,6 +13,7 @@ async function main() {
     const set = (id, value) => { const element = document.getElementById(id); element.value = value; element.dispatchEvent(new Event('input', { bubbles: true })); element.dispatchEvent(new Event('change', { bubbles: true })); };
     const submit = async (id) => { document.getElementById(id).dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait(); };
     const checks = {};
+    checks.singleFevMenu = document.querySelectorAll('.menu-bar').length === 1;
 
     document.getElementById('quick-add').click(); await wait();
     checks.quickAddOpensForm = Boolean(document.getElementById('transaction-form'));
@@ -50,7 +51,7 @@ async function main() {
     document.querySelector('[data-menu="help"]').click(); await wait();
     checks.helpMenuOpens = !document.querySelector('[data-menu-popup="help"]').hidden;
     document.querySelector('[data-action="show-about"]').click(); await wait();
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.2.1');
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.2.2');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
 
     document.querySelector('[data-view="reports"]').click(); await wait();
@@ -59,6 +60,10 @@ async function main() {
     checks.pdfNoticeStaysWithReport = document.body.textContent.includes('PDF saved to test-report.pdf') && !document.querySelector('[data-action="backup-json"]').closest('.panel').textContent.includes('test-report.pdf');
     document.querySelector('[data-action="backup-json"]').click(); await wait();
     checks.backupNoticeStaysWithBackup = document.body.textContent.includes('Backup saved to test-backup.json') && !document.querySelector('[data-action="export-pdf"]').closest('.panel').textContent.includes('test-backup.json');
+    window.confirm = () => true;
+    document.querySelector('[data-action="restore-json"]').click(); await wait();
+    document.querySelector('[data-view="transactions"]').click(); await wait();
+    checks.restorePopulatesLedger = document.body.textContent.includes('Restored income') && document.body.textContent.includes('$321.00');
     document.querySelector('[data-view="companies"]').click(); await wait();
     checks.clearCompanyButtonPresent = Boolean(document.querySelector('[data-action="clear-companies"]'));
     return checks;

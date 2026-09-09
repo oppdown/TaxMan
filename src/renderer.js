@@ -2,7 +2,7 @@
 
 const TAX_YEAR = 2025;
 const NEW_COMPANY = '__create__';
-const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, companyModal: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, appVersion: '0.2.1', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
+const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, companyModal: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, appVersion: '0.2.2', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
 
 document.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
@@ -276,8 +276,25 @@ async function exportFile(kind) {
 }
 
 async function restoreJson() {
-  if (!window.confirm('Restore a backup? The current ledger will be backed up first, then replaced by the selected file.')) return;
-  try { const result = await window.taxLedger.importJson(); if (!result.canceled) { state.store = await window.taxLedger.saveStore(result.store); state.selectedYear = state.store.taxYear || 2025; state.lastPdfPath = ''; state.lastCsvPath = ''; state.lastBackupPath = ''; toast('Backup restored.'); render(); } } catch (error) { toast(error.message || 'Restore failed.', true); }
+  const hasRecordedAmounts = state.store.transactions.some((transaction) => Number(transaction.amountCents || 0) > 0);
+  const prompt = hasRecordedAmounts
+    ? 'Restore a backup? The current ledger will be backed up first, then replaced by the selected file.'
+    : 'Restore this backup? The current ledger has no recorded amounts and will be replaced by the selected file.';
+  if (!window.confirm(prompt)) return;
+  try {
+    const result = await window.taxLedger.importJson();
+    if (!result.canceled) {
+      const importedStore = result.store;
+      await window.taxLedger.saveStore(importedStore);
+      state.store = importedStore;
+      state.selectedYear = state.store.taxYear || 2025;
+      state.lastPdfPath = '';
+      state.lastCsvPath = '';
+      state.lastBackupPath = '';
+      toast('Backup restored.');
+      render();
+    }
+  } catch (error) { toast(error.message || 'Restore failed.', true); }
 }
 
 function renderAboutModal() { return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="about-title"><div class="modal-header"><h2 id="about-title">About Tax Ledger</h2><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><div style="display:flex;align-items:center;gap:14px;margin-bottom:16px"><div class="brand-mark">$</div><div><strong style="font-size:18px;color:var(--navy)">Tax Ledger</strong><div class="muted">Version ${escapeHtml(state.appVersion)}</div></div></div><p>A local-first income and expenditure ledger for preparing records for your tax preparer.</p><p class="muted">Your data stays on this computer. This application does not submit tax forms or determine tax treatment.</p><div class="modal-actions"><button type="button" class="primary-button" data-action="close-modal">Close</button></div></div></section></div>`; }
