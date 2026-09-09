@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+  <title>Tax Ledger</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app-shell" class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">$</div><div><strong>Tax Ledger</strong><span>Multi-year · Local</span></div></div>
+      <nav class="nav" aria-label="Main navigation">
+        <button class="nav-item active" data-view="dashboard"><span>⌂</span> Dashboard</button>
+        <button class="nav-item" data-view="transactions"><span>▤</span> Transactions</button>
+        <button class="nav-item" data-view="companies"><span>♙</span> Companies &amp; Sources</button>
+        <button class="nav-item" data-view="reports"><span>▥</span> Reports &amp; Backup</button>
+      </nav>
+      <div class="sidebar-footer"><span class="status-dot"></span> Saved on this computer</div>
+    </aside>
+    <main class="main-content">
+      <nav class="menu-bar" aria-label="Application menu"><div class="menu-drop"><button class="menu-button" data-menu="file">File</button><div class="menu-popup" data-menu-popup="file" hidden><button data-action="file-save">Save</button><button data-action="file-save-as">Save As…</button></div></div><div class="menu-drop"><button class="menu-button" data-menu="edit">Edit</button><div class="menu-popup" data-menu-popup="edit" hidden><button data-action="show-add-income">Add income</button><button data-action="show-add">Add expense</button></div></div><div class="menu-drop"><button class="menu-button" data-menu="view">View</button><div class="menu-popup" data-menu-popup="view" hidden><button data-view="dashboard">Dashboard</button><button data-view="transactions">Transactions</button><button data-view="companies">Companies &amp; Sources</button><button data-view="reports">Reports &amp; Backup</button></div></div><div class="menu-drop"><button class="menu-button" data-menu="help">Help</button><div class="menu-popup" data-menu-popup="help" hidden><button data-action="show-about">About</button><button data-action="show-shortcuts">Keyboard shortcuts</button></div></div></nav>
+      <header class="topbar"><div><p id="year-eyebrow" class="eyebrow">2025 tax preparation</p><h1 id="page-title">Dashboard</h1></div><div class="topbar-actions"><label class="year-picker"><span>Year</span><select id="year-select" aria-label="Report year"></select></label><button id="quick-add" class="primary-button" data-action="show-add">＋ Add transaction</button></div></header>
+      <div id="toast-region" aria-live="polite"></div>
+      <div id="view-root"></div>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <script src="renderer.js"></script>
+</body>
+</html>

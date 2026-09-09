@@ -1,0 +1,56 @@
+{
+  "name": "tax-ledger-2025",
+  "version": "0.2.1",
+  "description": "Local income and expenditure ledger for tax preparation",
+  "main": "src/main.cjs",
+  "author": "Local Tax Ledger",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/core.test.cjs",
+    "test:ui": "electron test/ui-smoke.cjs",
+    "build": "electron-builder --win --x64",
+    "dist": "electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "com.localtaxledger.ledger2025",
+    "productName": "Tax Ledger",
+    "asar": true,
+    "files": [
+      "src/**/*",
+    "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "src/assets/tax-ledger-favicon-preview.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "Tax-Ledger-${version}-Windows.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "Tax-Ledger-${version}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "Tax-Ledger-${version}-Portable.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.12"
+  }
+}
