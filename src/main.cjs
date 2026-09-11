@@ -8,6 +8,7 @@ const { createApplicationMenuTemplate } = require('./menu.cjs');
 
 const DATA_FILE = 'data.json';
 const BACKUP_FILE = 'data.backup.json';
+const UPDATE_URL = 'https://github.com/oppdown/TaxMan/releases/latest';
 let mainWindow;
 
 function dataPath() { return path.join(app.getPath('userData'), DATA_FILE); }
@@ -82,6 +83,7 @@ function registerIpc() {
     return { canceled: false, path: result.filePath };
   });
   ipcMain.handle('app:open-folder', (_event, filePath) => shell.showItemInFolder(filePath));
+  ipcMain.handle('app:check-for-updates', () => shell.openExternal(UPDATE_URL));
   ipcMain.handle('app:version', () => app.getVersion());
 }
 

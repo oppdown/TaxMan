@@ -1,6 +1,6 @@
 {
   "name": "taxman",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Local income and expenditure ledger for tax preparation",
   "main": "src/main.cjs",
   "author": "TaxMan",

@@ -31,6 +31,7 @@ function createApplicationMenuTemplate(dispatch) {
     {
       label: 'Help',
       submenu: [
+        { label: 'Check for Updates…', click: send('check-for-updates') },
         { label: 'About', click: send('show-about') },
         { label: 'Keyboard shortcuts', click: send('show-shortcuts') }
       ]

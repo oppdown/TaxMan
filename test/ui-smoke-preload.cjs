@@ -17,7 +17,8 @@ contextBridge.exposeInMainWorld('taxLedger', {
   exportCsv: async () => ({ canceled: false, path: 'test-ledger.csv' }),
   exportPdf: async () => ({ canceled: false, path: 'test-report.pdf' }),
   openFolder: async () => {},
-  getVersion: async () => '0.2.3',
+  checkForUpdates: async () => {},
+  getVersion: async () => '0.2.5',
   onMenuAction: (callback) => { menuActionCallback = callback; },
   testEmitMenuAction: async (action) => menuActionCallback?.(action)
 });

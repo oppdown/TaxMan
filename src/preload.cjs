@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('taxLedger', {
   exportCsv: (store, year) => ipcRenderer.invoke('store:export-csv', store, year),
   exportPdf: (store, year) => ipcRenderer.invoke('report:export-pdf', store, year),
   openFolder: (filePath) => ipcRenderer.invoke('app:open-folder', filePath),
+  checkForUpdates: () => ipcRenderer.invoke('app:check-for-updates'),
   getVersion: () => ipcRenderer.invoke('app:version'),
   onMenuAction: (callback) => ipcRenderer.on('menu:action', (_event, action) => callback(action))
 });

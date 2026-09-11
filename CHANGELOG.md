@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.5 - 2026-09-11
+
+- Added Help → Check for Updates to open the latest TaxMan release page.
+- Kept the existing application data location unchanged so records remain available after updating or reopening the app.
+
 ## 0.2.4 - 2026-09-11
 
 - Renamed the desktop application from Tax Ledger to TaxMan across the app, reports, exports, packaging, and documentation.

@@ -50,8 +50,10 @@ async function main() {
 
     await window.taxLedger.testEmitMenuAction('show-about'); await wait();
     checks.helpMenuOpens = Boolean(document.querySelector('[aria-labelledby="about-title"]'));
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.2.3');
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.2.5');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
+    await window.taxLedger.testEmitMenuAction('check-for-updates'); await wait();
+    checks.checkForUpdatesAction = document.body.textContent.includes('Opened the TaxMan release page.');
     await window.taxLedger.testEmitMenuAction('view-reports'); await wait();
     checks.nativeViewActionWorks = document.getElementById('page-title').textContent === 'Reports & Backup';
 

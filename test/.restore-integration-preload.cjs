@@ -29,7 +29,7 @@ contextBridge.exposeInMainWorld('taxLedger', {
   exportCsv: async () => ({ canceled: true }),
   exportPdf: async () => ({ canceled: true }),
   openFolder: async () => {},
-  getVersion: async () => '0.2.3',
+  getVersion: async () => '0.2.5',
   onMenuAction: (callback) => { menuActionCallback = callback; },
   testEmitMenuAction: async (action) => menuActionCallback?.(action)
 });

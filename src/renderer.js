@@ -2,7 +2,7 @@
 
 const TAX_YEAR = 2025;
 const NEW_COMPANY = '__create__';
-const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, companyModal: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, appVersion: '0.2.3', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
+const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, companyModal: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, appVersion: '0.2.5', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
 
 document.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
@@ -74,6 +74,7 @@ async function handleAction(action, element) {
   if (action === 'close-modal') { state.companyModal = null; state.aboutOpen = false; state.shortcutsOpen = false; render(); }
   if (action === 'show-about') { state.openMenu = null; state.aboutOpen = true; render(); }
   if (action === 'show-shortcuts') { state.openMenu = null; state.shortcutsOpen = true; render(); }
+  if (action === 'check-for-updates') { state.openMenu = null; await window.taxLedger.checkForUpdates(); toast('Opened the TaxMan release page.'); }
   if (action === 'file-save') await saveLedger();
   if (action === 'file-save-as') await exportFile('json');
   if (action === 'use-today') { const input = document.getElementById('transaction-date'); if (input) { input.value = formatDateInput(todayIso()); input.focus(); } }
