@@ -1,8 +1,8 @@
-# Tax Ledger
+# TaxMan
 
 ![TaxMan icon](src/assets/taxman-icon.png)
 
-Local Windows desktop ledger for preparing income and expenditure records for a tax preparer. Version 0.2.3 is multi-year and local-only.
+Local Windows desktop ledger for preparing income and expenditure records for a tax preparer. Version 0.2.4 is multi-year and local-only.
 
 ## Use
 

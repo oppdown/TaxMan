@@ -20,7 +20,7 @@ async function main() {
   for (let index = 0; index < 38; index += 1) {
     store.transactions.push({ id: `extra-${index}`, taxYear: 2025, date: `2025-${String((index % 9) + 1).padStart(2, '0')}-${String((index % 27) + 1).padStart(2, '0')}`, type: 'expense', companyId: index % 2 ? 'utility' : 'software', categoryId: index % 2 ? 'expense-utilities' : 'expense-office-supplies', description: `Sample ledger line ${index + 1}`, amountCents: 1250 + index * 17, businessUsePercent: index % 2 ? 50 : 100, homeOfficeRelated: index % 2 === 1, notes: '' , createdAt: '', updatedAt: '' });
   }
-  const output = path.join(__dirname, '..', 'tmp', 'pdfs', 'tax-ledger-2025-sample.pdf');
+  const output = path.join(__dirname, '..', 'tmp', 'pdfs', 'taxman-2025-sample.pdf');
   await fs.mkdir(path.dirname(output), { recursive: true });
   const reportWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
   try {

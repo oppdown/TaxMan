@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.4 - 2026-09-11
+
+- Renamed the desktop application from Tax Ledger to TaxMan across the app, reports, exports, packaging, and documentation.
+- Replaced the in-app brand mark with the updated TAXMAN icon and kept the same icon family for the Windows package and public site.
+
 ## 0.2.3 - 2026-09-09
 
 - Moved File, Edit, View, and Help into the single native Windows application menu.

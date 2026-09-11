@@ -1,9 +1,9 @@
 {
-  "name": "tax-ledger-2025",
-  "version": "0.2.3",
+  "name": "taxman",
+  "version": "0.2.4",
   "description": "Local income and expenditure ledger for tax preparation",
   "main": "src/main.cjs",
-  "author": "Local Tax Ledger",
+  "author": "TaxMan",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
@@ -15,7 +15,7 @@
   },
   "build": {
     "appId": "com.localtaxledger.ledger2025",
-    "productName": "Tax Ledger",
+    "productName": "TaxMan",
     "asar": true,
     "files": [
       "src/**/*",
@@ -36,7 +36,7 @@
           "arch": ["x64"]
         }
       ],
-      "artifactName": "Tax-Ledger-${version}-Windows.${ext}"
+      "artifactName": "TaxMan-${version}-Windows.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -44,10 +44,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "artifactName": "Tax-Ledger-${version}-Setup.${ext}"
+      "artifactName": "TaxMan-${version}-Setup.${ext}"
     },
     "portable": {
-      "artifactName": "Tax-Ledger-${version}-Portable.${ext}"
+      "artifactName": "TaxMan-${version}-Portable.${ext}"
     }
   },
   "devDependencies": {

@@ -12,7 +12,7 @@
   <div class="site-shell narrow">
     <header class="site-header"><a class="brand" href="index.html"><img src="taxman-icon.png" alt="" width="46" height="46"><span>TaxMan</span></a><nav aria-label="Primary navigation"><a class="active" href="download.html">Download</a><a href="changelog.html">Changelog</a></nav></header>
     <main class="page-main">
-      <p class="eyebrow">TaxMan 0.2.3</p>
+      <p class="eyebrow">TaxMan 0.2.4</p>
       <h1>Choose your Windows copy.</h1>
       <p class="lede">Both options are the same local-first TaxMan ledger. Pick the one that fits how you work.</p>
       <div class="download-grid">
@@ -26,7 +26,7 @@
   <script>
     const releaseHost = ['https://', 'git', 'hub.com'].join('');
     const releasePath = ['/oppdown', '/TaxMan', '/releases', '/latest', '/download/'].join('');
-    const assets = { installer: `${releaseHost}${releasePath}Tax-Ledger-0.2.3-Setup.exe`, portable: `${releaseHost}${releasePath}Tax-Ledger-0.2.3-Portable.exe` };
+    const assets = { installer: `${releaseHost}${releasePath}TaxMan-0.2.4-Setup.exe`, portable: `${releaseHost}${releasePath}TaxMan-0.2.4-Portable.exe` };
     document.querySelectorAll('[data-download]').forEach((button) => button.addEventListener('click', () => { window.location.assign(assets[button.dataset.download]); }));
   </script>
 </body>

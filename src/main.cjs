@@ -50,7 +50,7 @@ function registerIpc() {
   ipcMain.handle('store:load', () => readStore());
   ipcMain.handle('store:save', (_event, store) => writeStore(store));
   ipcMain.handle('store:import', async () => {
-    const result = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'], filters: [{ name: 'Tax Ledger backup', extensions: ['json'] }] });
+    const result = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'], filters: [{ name: 'TaxMan backup', extensions: ['json'] }] });
     if (result.canceled || !result.filePaths[0]) return { canceled: true };
     const raw = await fs.readFile(result.filePaths[0], 'utf8');
     const store = normalizeStore(JSON.parse(raw));
@@ -59,19 +59,19 @@ function registerIpc() {
     return { canceled: false, store };
   });
   ipcMain.handle('store:export-json', async (_event, store) => {
-    const result = await saveDialog('tax-ledger-backup.json', [{ name: 'JSON backup', extensions: ['json'] }]);
+    const result = await saveDialog('taxman-backup.json', [{ name: 'JSON backup', extensions: ['json'] }]);
     if (result.canceled || !result.filePath) return { canceled: true };
     await fs.writeFile(result.filePath, JSON.stringify(normalizeStore(store), null, 2), 'utf8');
     return { canceled: false, path: result.filePath };
   });
   ipcMain.handle('store:export-csv', async (_event, store, year) => {
-    const result = await saveDialog(`tax-ledger-${year || 'transactions'}.csv`, [{ name: 'CSV spreadsheet', extensions: ['csv'] }]);
+    const result = await saveDialog(`taxman-${year || 'transactions'}.csv`, [{ name: 'CSV spreadsheet', extensions: ['csv'] }]);
     if (result.canceled || !result.filePath) return { canceled: true };
     await fs.writeFile(result.filePath, serializeCsv(normalizeStore(store), year), 'utf8');
     return { canceled: false, path: result.filePath };
   });
   ipcMain.handle('report:export-pdf', async (_event, store, year) => {
-    const result = await saveDialog(`tax-ledger-${year || 'report'}.pdf`, [{ name: 'PDF report', extensions: ['pdf'] }]);
+    const result = await saveDialog(`taxman-${year || 'report'}.pdf`, [{ name: 'PDF report', extensions: ['pdf'] }]);
     if (result.canceled || !result.filePath) return { canceled: true };
     const reportWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
     try {
@@ -86,7 +86,7 @@ function registerIpc() {
 }
 
 function createWindow() {
-  mainWindow = new BrowserWindow({ width: 1440, height: 940, minWidth: 1080, minHeight: 720, backgroundColor: '#eef3f8', title: 'Tax Ledger', icon: path.join(__dirname, 'assets', 'taxman-icon.png'), webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false } });
+  mainWindow = new BrowserWindow({ width: 1440, height: 940, minWidth: 1080, minHeight: 720, backgroundColor: '#eef3f8', title: 'TaxMan', icon: path.join(__dirname, 'assets', 'taxman-icon.png'), webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false } });
   Menu.setApplicationMenu(Menu.buildFromTemplate(createApplicationMenuTemplate(sendMenuAction)));
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 }
