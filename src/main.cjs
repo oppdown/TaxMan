@@ -10,9 +10,12 @@ const path = require('node:path');
 const QRCode = require('qrcode');
 const { buildReportHtml, normalizeStore, validateStore, serializeCsv } = require('./core.cjs');
 const { createApplicationMenuTemplate } = require('./menu.cjs');
+const { loadStoreFromFiles } = require('./store-file.cjs');
 
 const DATA_FILE = 'data.json';
 const BACKUP_FILE = 'data.backup.json';
+const STABLE_USER_DATA_DIRECTORY = 'TaxMan';
+const LEGACY_USER_DATA_DIRECTORIES = ['tax-ledger-2025'];
 let mainWindow;
 let phoneCaptureServer;
 let phoneCaptureSession;
@@ -21,6 +24,7 @@ let updatePromptOpen = false;
 
 function dataPath() { return path.join(app.getPath('userData'), DATA_FILE); }
 function backupPath() { return path.join(app.getPath('userData'), BACKUP_FILE); }
+function legacyDataPaths() { return LEGACY_USER_DATA_DIRECTORIES.flatMap((directory) => [path.join(app.getPath('appData'), directory, DATA_FILE), path.join(app.getPath('appData'), directory, BACKUP_FILE)]); }
 
 function lanAddress() {
   const interfaces = os.networkInterfaces();
@@ -170,16 +174,14 @@ async function checkForUpdates() {
 }
 
 async function readStore() {
-  try {
-    const raw = await fs.readFile(dataPath(), 'utf8');
-    const store = normalizeStore(JSON.parse(raw));
-    const errors = validateStore(store);
-    if (errors.length) throw new Error(errors.join('\n'));
-    return store;
-  } catch (error) {
-    if (error.code === 'ENOENT') return normalizeStore(null);
-    throw error;
-  }
+  const store = await loadStoreFromFiles({
+    currentPath: dataPath(),
+    fallbackPaths: [backupPath(), ...legacyDataPaths()],
+    normalizeStore,
+    validateStore,
+    migrate: (legacyStore) => writeStore(legacyStore)
+  });
+  return store || normalizeStore(null);
 }
 
 async function writeStore(store) {
@@ -247,6 +249,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  app.setPath('userData', path.join(app.getPath('appData'), STABLE_USER_DATA_DIRECTORY));
   app.setAppUserModelId('com.localtaxledger.ledger2025');
   registerIpc();
   createWindow();

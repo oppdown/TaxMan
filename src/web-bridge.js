@@ -64,7 +64,7 @@ if (!window.taxLedger) {
     exportPdf: async () => { window.print(); return { canceled: true }; },
     openFolder: async () => {},
     checkForUpdates: async () => { window.open('https://taxman.speedy-star-8288.chatgpt.site/download.html', '_blank'); },
-    getVersion: async () => '0.3.0',
+    getVersion: async () => '0.3.1',
     startPhoneCapture: async () => ({ direct: true }),
     stopPhoneCapture: async () => {},
     onPhoneCaptureUploaded: () => {}

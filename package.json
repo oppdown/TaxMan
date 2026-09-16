@@ -1,13 +1,13 @@
 {
   "name": "taxman",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Local income and expenditure ledger for tax preparation",
   "main": "src/main.cjs",
   "author": "TaxMan",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/core.test.cjs test/menu.test.cjs",
+    "test": "node --test test/core.test.cjs test/menu.test.cjs test/store-file.test.cjs",
     "test:ui": "electron test/ui-smoke.cjs",
     "test:phone-capture": "electron test/phone-capture-integration.cjs",
     "build:mobile": "node scripts/prepare-mobile-build.cjs",
@@ -47,7 +47,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": false,
+      "perMachine": true,
+      "allowElevation": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,

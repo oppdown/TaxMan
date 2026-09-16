@@ -19,7 +19,7 @@ contextBridge.exposeInMainWorld('taxLedger', {
   exportPdf: async () => ({ canceled: false, path: 'test-report.pdf' }),
   openFolder: async () => {},
   checkForUpdates: async () => ({ status: 'unavailable', message: 'Automatic updates are available in the installed Windows version of TaxMan.' }),
-  getVersion: async () => '0.3.0',
+  getVersion: async () => '0.3.1',
   onMenuAction: (callback) => { menuActionCallback = callback; },
   testEmitMenuAction: async (action) => menuActionCallback?.(action)
 });

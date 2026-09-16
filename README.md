@@ -2,7 +2,7 @@
 
 ![TaxMan icon](src/assets/taxman-icon.png)
 
-Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.3.0 adds the Android/mobile runtime while retaining the Windows desktop app.
+Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.3.1 keeps Windows installs and upgrades connected to the same local records while retaining the Android/mobile runtime.
 
 ## Use
 
@@ -18,7 +18,7 @@ The app stores records locally on the computer. It does not connect to a cloud s
 
 Phone capture uses the same local Wi-Fi network as the computer. TaxMan shows a locally generated QR code for the temporary capture page, with the address available as a fallback. The link expires after a short time, and the photo is compressed on the phone before being sent directly to TaxMan. The app does not perform automatic tax decisions or silently create a transaction from the image; verify the bill details in the form before saving.
 
-Installed Windows builds can use Help > Check for Updates to check for a newer TaxMan release, download it only after confirmation, and ask before restarting to install it. Development builds keep the update action disabled until installed.
+Installed Windows builds can use Help > Check for Updates to check for a newer TaxMan release, download it only after confirmation, and ask before restarting to install it. Windows installers request elevation automatically when needed, so users can start setup with a normal double-click. Development builds keep the update action disabled until installed.
 
 The TAXMAN icon is stored at `src/assets/taxman-icon.png` and is reused by the Windows app, installer, public site, and documentation.
 

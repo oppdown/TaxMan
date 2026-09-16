@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 - 2026-09-16
+
+- Fixed Windows upgrades so records from the former Tax Ledger data folder are migrated into TaxMan automatically.
+- Stabilized the Windows data location so future product-name changes do not strand local records.
+- Changed the Windows installer to request administrator approval automatically when launched normally.
+
 ## 0.3.0 - 2026-09-16
 
 - Added local phone capture for bill photos from an open transaction form.

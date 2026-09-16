@@ -2,7 +2,7 @@
 
 const TAX_YEAR = 2025;
 const NEW_COMPANY = '__create__';
-const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, companyModal: null, phoneCapture: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, appVersion: '0.3.0', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
+const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, companyModal: null, phoneCapture: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, appVersion: '0.3.1', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
 
 document.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
