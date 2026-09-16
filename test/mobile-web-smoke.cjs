@@ -20,6 +20,9 @@ async function main() {
     document.querySelector('[data-action="cancel-companion-pairing"]')?.click(); await wait();
     document.getElementById('quick-add').click(); await wait();
     const mobileControls = { companionSurface, pairingForm, qrScanButton, qrDecoderLoaded, form: Boolean(document.getElementById('transaction-form')), directCameraButton: Boolean(document.querySelector('[data-action="take-receipt-photo"]')), cameraInput: document.getElementById('receipt-photo')?.accept === 'image/*' };
+    document.querySelector('[data-action="calculate-business-use"]')?.click(); await wait();
+    mobileControls.workUseCalculator = document.getElementById('work-use-percent')?.textContent.includes('33.33%');
+    document.getElementById('work-use-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait();
     set('transaction-company', 'company-hart-emc'); set('transaction-category', 'expense-utilities'); set('transaction-date', '090826'); set('transaction-description', 'Mobile smoke bill'); set('transaction-amount', '18.25');
     document.getElementById('transaction-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait();
     return { ...mobileControls, saved: document.body.textContent.includes('Mobile smoke bill'), localStore: Boolean(localStorage.getItem('taxman.local-store.v1')) };
@@ -31,6 +34,7 @@ async function main() {
   assert.equal(result.qrDecoderLoaded, true);
   assert.equal(result.directCameraButton, true);
   assert.equal(result.cameraInput, true);
+  assert.equal(result.workUseCalculator, true);
   assert.equal(result.saved, true);
   assert.equal(result.localStore, true);
   console.log(JSON.stringify(result));
