@@ -48,14 +48,18 @@ jobs:
         run: npm run dist -- --publish never
 
       - name: Attach Windows packages to the release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          files: |
-            dist/TaxMan-*-Setup.exe
-            dist/TaxMan-*-Portable.exe
-            dist/TaxMan-*-Setup.exe.blockmap
-            dist/latest.yml
-          overwrite_files: true
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          gh release view "$env:RELEASE_TAG" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create "$env:RELEASE_TAG" --verify-tag --title "TaxMan $version" --generate-notes
+          }
+          gh release upload "$env:RELEASE_TAG" `
+            "dist/TaxMan-$version-Setup.exe" `
+            "dist/TaxMan-$version-Portable.exe" `
+            "dist/TaxMan-$version-Setup.exe.blockmap" `
+            "dist/latest.yml" `
+            --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
