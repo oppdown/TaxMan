@@ -56,5 +56,6 @@ jobs:
             dist/TaxMan-*-Portable.exe
             dist/TaxMan-*-Setup.exe.blockmap
             dist/latest.yml
+          overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
