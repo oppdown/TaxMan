@@ -1,8 +1,17 @@
 # Changelog
 
+## 0.3.0 - Unreleased
+
+- Added local phone capture for bill photos from an open transaction form.
+- Added a locally generated QR code to open the temporary phone-capture page without typing its address.
+- Added reviewable, locally stored receipt-photo attachments without automatic transaction creation.
+- Added an Android/Capacitor mobile build with on-device storage and camera capture.
+- Added a mobile web/PWA build and CI workflow for producing an Android test APK.
+- Enabled Help → Check for Updates in installed Windows builds, with confirmation before download and restart.
+
 ## 0.2.5 - 2026-09-11
 
-- Added Help → Check for Updates to open the latest TaxMan release page.
+- Added the Help → Check for Updates menu entry.
 - Kept the existing application data location unchanged so records remain available after updating or reopening the app.
 
 ## 0.2.4 - 2026-09-11

@@ -1,21 +1,172 @@
 'use strict';
 
 const { app, BrowserWindow, dialog, ipcMain, shell, Menu } = require('electron');
+const { autoUpdater } = require('electron-updater');
+const http = require('node:http');
+const os = require('node:os');
+const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const QRCode = require('qrcode');
 const { buildReportHtml, normalizeStore, validateStore, serializeCsv } = require('./core.cjs');
 const { createApplicationMenuTemplate } = require('./menu.cjs');
 
 const DATA_FILE = 'data.json';
 const BACKUP_FILE = 'data.backup.json';
-const UPDATE_URL = 'https://github.com/oppdown/TaxMan/releases/latest';
 let mainWindow;
+let phoneCaptureServer;
+let phoneCaptureSession;
+let updateCheckInProgress = false;
+let updatePromptOpen = false;
 
 function dataPath() { return path.join(app.getPath('userData'), DATA_FILE); }
 function backupPath() { return path.join(app.getPath('userData'), BACKUP_FILE); }
 
+function lanAddress() {
+  const interfaces = os.networkInterfaces();
+  for (const entries of Object.values(interfaces)) {
+    for (const entry of entries || []) {
+      if (entry.family === 'IPv4' && !entry.internal && !entry.address.startsWith('169.254.')) return entry.address;
+    }
+  }
+  return '127.0.0.1';
+}
+
+function jsonResponse(response, status, payload) {
+  const body = JSON.stringify(payload);
+  response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(body) });
+  response.end(body);
+}
+
+function mobileCapturePage() {
+  return fs.readFile(path.join(__dirname, 'mobile-capture.html'), 'utf8');
+}
+
+async function readRequestBody(request, maxBytes = 9000000) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > maxBytes) throw new Error('The photo is too large. Try again with a smaller image.');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+async function stopPhoneCapture() {
+  const server = phoneCaptureServer;
+  phoneCaptureServer = null;
+  phoneCaptureSession = null;
+  if (server) await new Promise((resolve) => server.close(() => resolve()));
+}
+
+async function startPhoneCapture() {
+  await stopPhoneCapture();
+  const token = crypto.randomBytes(18).toString('hex');
+  phoneCaptureSession = { token, imageData: '', expiresAt: Date.now() + 10 * 60 * 1000 };
+  phoneCaptureServer = http.createServer(async (request, response) => {
+    const url = new URL(request.url || '/', 'http://localhost');
+    if (!phoneCaptureSession || phoneCaptureSession.token !== url.searchParams.get('token') || Date.now() > phoneCaptureSession.expiresAt) {
+      response.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+      response.end('This TaxMan phone capture link has expired.');
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/capture') {
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      response.end(await mobileCapturePage());
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/upload') {
+      try {
+        const payload = JSON.parse(await readRequestBody(request));
+        if (typeof payload.imageData !== 'string' || !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(payload.imageData) || payload.imageData.length > 12000000) throw new Error('The photo could not be read. Please try again.');
+        phoneCaptureSession.imageData = payload.imageData;
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('phone-capture:uploaded', payload.imageData);
+        jsonResponse(response, 200, { ok: true });
+      } catch (error) { jsonResponse(response, 400, { ok: false, error: error.message }); }
+      return;
+    }
+    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    response.end('Not found');
+  });
+  await new Promise((resolve, reject) => { phoneCaptureServer.once('error', reject); phoneCaptureServer.listen(0, '0.0.0.0', resolve); });
+  const port = phoneCaptureServer.address().port;
+  const url = `http://${lanAddress()}:${port}/capture?token=${token}`;
+  try {
+    const qrDataUrl = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 2, width: 240 });
+    return { url, qrDataUrl, expiresAt: phoneCaptureSession.expiresAt };
+  } catch (error) {
+    await stopPhoneCapture();
+    throw error;
+  }
+}
+
 function sendMenuAction(action) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('menu:action', action);
+}
+
+function sendUpdateStatus(status, message, details = {}) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('app:update-status', { status, message, ...details });
+}
+
+function configureAutoUpdater() {
+  if (process.platform !== 'win32') return;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('checking-for-update', () => sendUpdateStatus('checking', 'Checking for a TaxMan update…'));
+  autoUpdater.on('update-not-available', () => sendUpdateStatus('not-available', 'TaxMan is up to date.'));
+  autoUpdater.on('update-available', async (info) => {
+    sendUpdateStatus('available', `TaxMan ${info.version} is available.`, { version: info.version });
+    if (updatePromptOpen || !mainWindow || mainWindow.isDestroyed()) return;
+    updatePromptOpen = true;
+    try {
+      const choice = await dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'TaxMan update available',
+        message: `TaxMan ${info.version} is ready to download.`,
+        detail: 'TaxMan will download the update and ask before restarting. Your local records will remain in place.',
+        buttons: ['Download update', 'Later'],
+        defaultId: 0,
+        cancelId: 1
+      });
+      if (choice.response === 0) {
+        sendUpdateStatus('downloading', 'Downloading the TaxMan update…');
+        await autoUpdater.downloadUpdate();
+      } else sendUpdateStatus('available', `TaxMan ${info.version} is available whenever you are ready.`, { version: info.version });
+    } catch (error) {
+      sendUpdateStatus('error', error.message || 'The TaxMan update could not be downloaded.');
+    } finally { updatePromptOpen = false; }
+  });
+  autoUpdater.on('download-progress', (progress) => sendUpdateStatus('downloading', `Downloading the TaxMan update… ${Math.round(progress.percent)}%`));
+  autoUpdater.on('update-downloaded', async (info) => {
+    sendUpdateStatus('downloaded', `TaxMan ${info.version} is ready to install.`, { version: info.version });
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const choice = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'TaxMan update ready',
+      message: `TaxMan ${info.version} has been downloaded.`,
+      detail: 'Restart TaxMan now to finish installing the update, or choose Later and install it the next time you close the app.',
+      buttons: ['Restart and install', 'Later'],
+      defaultId: 0,
+      cancelId: 1
+    });
+    if (choice.response === 0) autoUpdater.quitAndInstall();
+  });
+  autoUpdater.on('error', (error) => sendUpdateStatus('error', error.message || 'TaxMan could not check for updates.'));
+}
+
+async function checkForUpdates() {
+  if (!app.isPackaged || process.platform !== 'win32') return { status: 'unavailable', message: 'Automatic updates are available in the installed Windows version of TaxMan.' };
+  if (updateCheckInProgress) return { status: 'checking', message: 'TaxMan is already checking for updates.' };
+  updateCheckInProgress = true;
+  try {
+    await autoUpdater.checkForUpdates();
+    return { status: 'checking', message: 'Checking for a TaxMan update…' };
+  } catch (error) {
+    const message = error.message || 'TaxMan could not check for updates.';
+    sendUpdateStatus('error', message);
+    return { status: 'error', message };
+  } finally { updateCheckInProgress = false; }
 }
 
 async function readStore() {
@@ -83,8 +234,10 @@ function registerIpc() {
     return { canceled: false, path: result.filePath };
   });
   ipcMain.handle('app:open-folder', (_event, filePath) => shell.showItemInFolder(filePath));
-  ipcMain.handle('app:check-for-updates', () => shell.openExternal(UPDATE_URL));
+  ipcMain.handle('app:check-for-updates', () => checkForUpdates());
   ipcMain.handle('app:version', () => app.getVersion());
+  ipcMain.handle('phone-capture:start', () => startPhoneCapture());
+  ipcMain.handle('phone-capture:stop', () => stopPhoneCapture());
 }
 
 function createWindow() {
@@ -97,6 +250,8 @@ app.whenReady().then(() => {
   app.setAppUserModelId('com.localtaxledger.ledger2025');
   registerIpc();
   createWindow();
+  configureAutoUpdater();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('before-quit', () => { if (phoneCaptureServer) phoneCaptureServer.close(); });

@@ -6,3 +6,6 @@ Reports/
 out/downloads/
 *.tmp
 *.log
+mobile-dist/
+android/
+Android Build Tools/

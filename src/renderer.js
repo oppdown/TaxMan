@@ -2,11 +2,13 @@
 
 const TAX_YEAR = 2025;
 const NEW_COMPANY = '__create__';
-const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, companyModal: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, appVersion: '0.2.5', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
+const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, companyModal: null, phoneCapture: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, appVersion: '0.3.0', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
 
 document.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
   if (window.taxLedger.onMenuAction) window.taxLedger.onMenuAction((action) => handleAction(action));
+  if (window.taxLedger.onPhoneCaptureUploaded) window.taxLedger.onPhoneCaptureUploaded((imageData) => handlePhoneCaptureUploaded(imageData));
+  if (window.taxLedger.onUpdateStatus) window.taxLedger.onUpdateStatus((status) => handleUpdateStatus(status));
   try { state.store = await window.taxLedger.loadStore(); state.selectedYear = bestYearForStore(state.store, state.store.taxYear || 2025); state.appVersion = await window.taxLedger.getVersion(); render(); }
   catch (error) { renderFatal(error); }
 });
@@ -40,6 +42,7 @@ function bindEvents() {
       const businessUse = document.getElementById('business-use');
       if (businessUse) businessUse.value = '33';
     }
+    if (event.target.id === 'receipt-photo' && event.target.files?.[0]) handleReceiptFile(event.target.files[0]);
   });
   document.addEventListener('input', (event) => {
     if (event.target.id === 'transaction-search') { state.search = event.target.value; render(); focusInput('transaction-search', state.search); }
@@ -58,7 +61,7 @@ function bindEvents() {
     if (event.ctrlKey && event.key.toLowerCase() === 'n') { event.preventDefault(); openTransaction('expense'); }
     else if (event.ctrlKey && event.key.toLowerCase() === 's' && state.transactionDraft) { event.preventDefault(); document.getElementById('transaction-form')?.requestSubmit(); }
     else if (event.ctrlKey && /^[1-4]$/.test(event.key)) { event.preventDefault(); state.view = ['dashboard', 'transactions', 'companies', 'reports'][Number(event.key) - 1]; state.transactionDraft = null; render(); }
-    else if (event.key === 'Escape') { if (state.companyModal || state.aboutOpen || state.shortcutsOpen) { state.companyModal = null; state.aboutOpen = false; state.shortcutsOpen = false; render(); } else if (state.transactionDraft) { state.transactionDraft = null; render(); } else if (state.openMenu) { state.openMenu = null; render(); } }
+    else if (event.key === 'Escape') { if (state.companyModal || state.phoneCapture || state.aboutOpen || state.shortcutsOpen) { if (state.phoneCapture) window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.aboutOpen = false; state.shortcutsOpen = false; render(); } else if (state.transactionDraft) { state.transactionDraft = null; render(); } else if (state.openMenu) { state.openMenu = null; render(); } }
   });
 }
 
@@ -71,10 +74,15 @@ async function handleAction(action, element) {
   if (action === 'delete-transaction') await deleteTransaction(element.dataset.id);
   if (action === 'add-company') { state.companyModal = { editId: null, returnToTransaction: false }; render(); }
   if (action === 'edit-company') { state.companyModal = { editId: element.dataset.id, returnToTransaction: false }; render(); }
-  if (action === 'close-modal') { state.companyModal = null; state.aboutOpen = false; state.shortcutsOpen = false; render(); }
+  if (action === 'close-modal') { if (state.phoneCapture) await window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.aboutOpen = false; state.shortcutsOpen = false; render(); }
+  if (action === 'start-phone-capture') await beginPhoneCapture();
+  if (action === 'take-receipt-photo') document.getElementById('receipt-photo')?.click();
+  if (action === 'cancel-phone-capture') { await window.taxLedger.stopPhoneCapture(); state.phoneCapture = null; render(); }
+  if (action === 'copy-phone-url') await copyPhoneUrl();
+  if (action === 'remove-receipt-photo') { state.transactionDraft.receiptImageData = ''; render(); }
   if (action === 'show-about') { state.openMenu = null; state.aboutOpen = true; render(); }
   if (action === 'show-shortcuts') { state.openMenu = null; state.shortcutsOpen = true; render(); }
-  if (action === 'check-for-updates') { state.openMenu = null; await window.taxLedger.checkForUpdates(); toast('Opened the TaxMan release page.'); }
+  if (action === 'check-for-updates') { state.openMenu = null; const result = await window.taxLedger.checkForUpdates(); if (result?.status === 'unavailable' || result?.status === 'error') toast(result.message || 'TaxMan could not check for updates.', true); else if (result?.status === 'checking') toast(result.message || 'Checking for a TaxMan update…'); }
   if (action === 'file-save') await saveLedger();
   if (action === 'file-save-as') await exportFile('json');
   if (action === 'use-today') { const input = document.getElementById('transaction-date'); if (input) { input.value = formatDateInput(todayIso()); input.focus(); } }
@@ -96,7 +104,7 @@ function render() {
   document.getElementById('year-eyebrow').textContent = `${state.selectedYear} tax preparation`;
   populateYearSelector();
   document.getElementById('view-root').innerHTML = state.view === 'dashboard' ? renderDashboard() : state.view === 'transactions' ? renderTransactions() : state.view === 'companies' ? renderCompanies() : renderReports();
-  document.getElementById('modal-root').innerHTML = state.companyModal ? renderCompanyModal() : state.aboutOpen ? renderAboutModal() : state.shortcutsOpen ? renderShortcutsModal() : '';
+  document.getElementById('modal-root').innerHTML = state.companyModal ? renderCompanyModal() : state.phoneCapture ? renderPhoneCaptureModal() : state.aboutOpen ? renderAboutModal() : state.shortcutsOpen ? renderShortcutsModal() : '';
 }
 
 function navigateTo(view) {
@@ -160,6 +168,7 @@ function renderTransactionForm() {
     <div class="field"><label class="required" for="transaction-description">Description</label><input id="transaction-description" name="description" required maxlength="160" placeholder="What was this for?" value="${escapeAttr(draft.description)}"></div>
     <div class="field"><label class="required" for="transaction-amount">Amount (USD)</label><input id="transaction-amount" name="amount" inputmode="decimal" required placeholder="0.00" value="${escapeAttr(draft.amountCents ? (draft.amountCents / 100).toFixed(2) : '')}"><small>Enter the full amount paid or received.</small></div>
     ${isIncome ? '' : `<div class="field"><label class="required" for="business-use">Business use</label><input id="business-use" name="businessUsePercent" type="number" min="0" max="100" step="0.01" required value="${escapeAttr(draft.businessUsePercent ?? 100)}"><small>Use 100% for a fully business expense; shared costs can use a lower percentage.</small></div><div class="check-field"><input id="home-office-related" name="homeOfficeRelated" type="checkbox" ${draft.homeOfficeRelated ? 'checked' : ''}><label for="home-office-related">Mark as home-office-related</label></div>`}
+    <div class="field wide"><label>Bill photo</label><div class="photo-actions">${window.taxLedger.supportsPhoneCapture ? '<button type="button" class="secondary-button" data-action="start-phone-capture">Take with phone</button>' : '<button type="button" class="secondary-button" data-action="take-receipt-photo">Take photo</button>'}<label class="secondary-button file-button">Choose photo<input id="receipt-photo" type="file" accept="image/*" capture="environment"></label>${draft.receiptImageData ? '<span class="photo-attached">Photo attached</span>' : '<span class="muted">Optional</span>'}</div>${draft.receiptImageData ? `<div class="receipt-preview"><img src="${escapeAttr(draft.receiptImageData)}" alt="Attached bill photo"><button type="button" class="icon-button danger-text" data-action="remove-receipt-photo">Remove photo</button></div>` : `<small>${window.taxLedger.supportsPhoneCapture ? 'Use the phone link for a camera photo, or choose an image from this computer.' : 'Take a photo or choose an image. The bill stays on this device.'}</small>`}</div>
     <div class="field wide"><label for="transaction-notes">Notes</label><textarea id="transaction-notes" name="notes" maxlength="500" placeholder="Optional receipt reference or context">${escapeHtml(draft.notes)}</textarea></div>
   </div><div class="form-actions"><button type="button" class="secondary-button" data-action="cancel-form">Cancel</button><button type="submit" class="primary-button">Save transaction</button></div></form></div></section>`;
 }
@@ -198,10 +207,77 @@ function renderCompanyModal() {
   return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-header"><h2 id="modal-title">${title}</h2><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><form id="company-form"><input type="hidden" name="id" value="${escapeAttr(company.id || '')}"><div class="form-grid"><div class="field wide"><label class="required" for="company-name">Name</label><input id="company-name" name="name" required maxlength="120" placeholder="e.g. Georgia Power" value="${escapeAttr(company.name || '')}"></div><div class="field"><label for="company-classification">Classification</label><select id="company-classification" name="classification">${['Utility','Income source','Vendor','Client','Employer','Insurance','Bank','Other'].map((value) => `<option ${value === (company.classification || 'Other') ? 'selected' : ''}>${value}</option>`).join('')}</select></div><div class="field"><label for="company-phone">Phone</label><input id="company-phone" name="phone" maxlength="40" value="${escapeAttr(company.phone || '')}"></div><div class="field"><label for="company-email">Email</label><input id="company-email" name="email" type="email" maxlength="120" value="${escapeAttr(company.email || '')}"></div><div class="field"><label for="company-website">Website</label><input id="company-website" name="website" maxlength="160" value="${escapeAttr(company.website || '')}"></div><div class="field wide"><label for="company-notes">Notes</label><textarea id="company-notes" name="notes" maxlength="500">${escapeHtml(company.notes || '')}</textarea></div></div><div class="modal-actions"><button type="button" class="secondary-button" data-action="close-modal">Cancel</button><button type="submit" class="primary-button">Save company</button></div></form></div></section></div>`;
 }
 
+function renderPhoneCaptureModal() {
+  const expires = new Date(state.phoneCapture.expiresAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const qrCode = state.phoneCapture.qrDataUrl ? `<div class="phone-qr"><img src="${escapeAttr(state.phoneCapture.qrDataUrl)}" alt="QR code for opening TaxMan bill photo capture on your phone"><p>Scan with your phone camera</p></div>` : '';
+  return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="phone-capture-title"><div class="modal-header"><h2 id="phone-capture-title">Take a bill photo with your phone</h2><button class="close-button" data-action="cancel-phone-capture" aria-label="Close">×</button></div><div class="modal-body"><div class="phone-qr-layout">${qrCode}<div class="phone-qr-instructions"><p>Scan the QR code with your phone while it is connected to the same Wi-Fi as this computer.</p><p class="muted">If scanning is not convenient, open this address manually:</p><div class="phone-url-row"><input id="phone-capture-url" readonly value="${escapeAttr(state.phoneCapture.url)}"><button type="button" class="secondary-button" data-action="copy-phone-url">Copy</button></div></div></div><p class="muted">The link expires at ${escapeHtml(expires)}. The photo is compressed on your phone, sent directly to this computer, and held for your review.</p><div class="notice">After the photo arrives, this dialog closes and the image appears in the transaction form. You still enter or verify the date, company, description, and amount before saving.</div><div class="modal-actions"><button type="button" class="secondary-button" data-action="cancel-phone-capture">Cancel</button></div></div></section></div>`;
+}
+
+async function beginPhoneCapture() {
+  try {
+    state.phoneCapture = await window.taxLedger.startPhoneCapture();
+    if (state.phoneCapture?.direct) { state.phoneCapture = null; document.getElementById('receipt-photo')?.click(); return; }
+    render();
+  } catch (error) { toast(error.message || 'Phone capture could not start.', true); }
+}
+
+async function copyPhoneUrl() {
+  const url = state.phoneCapture?.url;
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('Phone capture address copied.');
+  } catch {
+    const input = document.getElementById('phone-capture-url');
+    input?.select();
+    document.execCommand('copy');
+    toast('Phone capture address copied.');
+  }
+}
+
+async function handlePhoneCaptureUploaded(imageData) {
+  if (!state.transactionDraft || !/^data:image\/(?:jpeg|png|webp);base64,/.test(String(imageData || ''))) return;
+  state.transactionDraft.receiptImageData = imageData;
+  state.phoneCapture = null;
+  await window.taxLedger.stopPhoneCapture();
+  toast('Bill photo received. Review it before saving.');
+  render();
+}
+
+async function handleReceiptFile(file) {
+  try {
+    state.transactionDraft.receiptImageData = await resizeReceiptImage(file);
+    toast('Bill photo attached. Review it before saving.');
+    render();
+  } catch (error) { toast(error.message || 'The photo could not be attached.', true); }
+}
+
+function resizeReceiptImage(file) {
+  if (!file.type.startsWith('image/')) return Promise.reject(new Error('Choose an image file.'));
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('The photo could not be read.'));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error('The photo could not be opened.'));
+      image.onload = () => {
+        const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', .78));
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function openTransaction(type, idValue) {
   state.view = 'transactions';
   if (idValue) { const transaction = state.store.transactions.find((item) => item.id === idValue); state.transactionDraft = { ...transaction }; state.selectedYear = transaction.taxYear; }
-  else { state.transactionDraft = { type: type || 'expense', date: '', companyId: '', categoryId: '', description: '', amountCents: 0, businessUsePercent: 100, homeOfficeRelated: false, notes: '' }; }
+  else { state.transactionDraft = { type: type || 'expense', date: '', companyId: '', categoryId: '', description: '', amountCents: 0, businessUsePercent: 100, homeOfficeRelated: false, notes: '', receiptImageData: '' }; }
   render();
   setTimeout(() => document.getElementById('transaction-date')?.focus(), 0);
 }
@@ -221,7 +297,7 @@ async function saveTransaction(form) {
   if (type === 'expense' && (!Number.isFinite(percent) || percent < 0 || percent > 100)) errors.push('Business use must be between 0% and 100%.');
   if (errors.length) { toast(errors[0], true); return; }
   const existing = state.transactionDraft.id ? state.store.transactions.find((transaction) => transaction.id === state.transactionDraft.id) : null;
-  const transaction = { id: existing?.id || `transaction-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, taxYear: transactionYear, date, type, companyId: String(form.get('companyId')), categoryId: String(form.get('categoryId')), description: String(form.get('description')).trim(), amountCents, businessUsePercent: type === 'expense' ? Math.round(percent * 100) / 100 : null, homeOfficeRelated: type === 'expense' && form.get('homeOfficeRelated') === 'on', notes: String(form.get('notes') || '').trim(), createdAt: existing?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const transaction = { id: existing?.id || `transaction-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, taxYear: transactionYear, date, type, companyId: String(form.get('companyId')), categoryId: String(form.get('categoryId')), description: String(form.get('description')).trim(), amountCents, businessUsePercent: type === 'expense' ? Math.round(percent * 100) / 100 : null, homeOfficeRelated: type === 'expense' && form.get('homeOfficeRelated') === 'on', notes: String(form.get('notes') || '').trim(), receiptImageData: state.transactionDraft.receiptImageData || '', createdAt: existing?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
   if (existing) state.store.transactions = state.store.transactions.map((item) => item.id === existing.id ? transaction : item); else state.store.transactions.push(transaction);
   try { await persist(); } catch (error) { toast(error.message || 'Transaction could not be saved.', true); return; }
   state.transactionDraft = null; state.selectedYear = transactionYear; toast(existing ? 'Transaction updated.' : 'Transaction saved.'); render();
@@ -309,6 +385,13 @@ async function restoreJson() {
 function renderAboutModal() { return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="about-title"><div class="modal-header"><h2 id="about-title">About TaxMan</h2><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><div style="display:flex;align-items:center;gap:14px;margin-bottom:16px"><img class="brand-icon" src="assets/taxman-icon.png" alt=""><div><strong style="font-size:18px;color:var(--navy)">TaxMan</strong><div class="muted">Version ${escapeHtml(state.appVersion)}</div></div></div><p>A local-first income and expenditure ledger for preparing records for your tax preparer.</p><p class="muted">Your data stays on this computer. This application does not submit tax forms or determine tax treatment.</p><div class="modal-actions"><button type="button" class="primary-button" data-action="close-modal">Close</button></div></div></section></div>`; }
 
 function renderShortcutsModal() { return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title"><div class="modal-header"><h2 id="shortcuts-title">Keyboard shortcuts</h2><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><div class="shortcut-list"><div><kbd>Ctrl</kbd> + <kbd>N</kbd><span>New expense</span></div><div><kbd>Ctrl</kbd> + <kbd>S</kbd><span>Save the open transaction</span></div><div><kbd>Ctrl</kbd> + <kbd>1</kbd> through <kbd>4</kbd><span>Open Dashboard, Transactions, Companies, or Reports</span></div><div><kbd>Esc</kbd><span>Close a dialog or cancel the open form</span></div></div><p class="notice" style="margin-top:18px">Date tip: type six digits such as <strong>090826</strong> and the app records September 8, 2026.</p><div class="modal-actions"><button type="button" class="primary-button" data-action="close-modal">Close</button></div></div></section></div>`; }
+
+function handleUpdateStatus(status) {
+  if (!status?.message) return;
+  if (status.status === 'error') toast(status.message, true);
+  else if (status.status === 'not-available') toast(status.message);
+  else if (status.status === 'downloaded') toast(status.message);
+}
 
 function filteredTransactions() { const search = state.search.toLowerCase(); return [...state.store.transactions].filter((transaction) => transaction.taxYear === Number(state.selectedYear)).filter((transaction) => { const company = findCompany(transaction.companyId)?.name || ''; const matchesSearch = !search || [company, transaction.description, transaction.notes].some((value) => value.toLowerCase().includes(search)); return (state.typeFilter === 'all' || transaction.type === state.typeFilter) && (state.categoryFilter === 'all' || transaction.categoryId === state.categoryFilter) && matchesSearch; }).sort((a, b) => b.date.localeCompare(a.date)); }
 function companyOptions(selected) { return `<option value="">Choose a company/source</option>${[...state.store.companies].sort((a, b) => a.name.localeCompare(b.name)).map((company) => `<option value="${escapeAttr(company.id)}" ${company.id === selected ? 'selected' : ''}>${escapeHtml(company.name)}</option>`).join('')}<option value="${NEW_COMPANY}">＋ Create new company/source…</option>`; }

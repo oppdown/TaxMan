@@ -1,0 +1,6 @@
+{
+  "appId": "com.taxman.ledger",
+  "appName": "TaxMan",
+  "webDir": "mobile-dist",
+  "bundledWebRuntime": false
+}

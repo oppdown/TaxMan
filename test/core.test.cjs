@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createEmptyStore, normalizeStore, validateStore, calculateSummary, businessAmountCents, serializeCsv, buildReportHtml } = require('../src/core.cjs');
+const { createEmptyStore, normalizeStore, validateStore, calculateSummary, businessAmountCents, serializeCsv, buildReportHtml, isReceiptImageData } = require('../src/core.cjs');
 
 function sampleStore() {
   const store = createEmptyStore();
@@ -62,4 +62,12 @@ test('CSV and PDF report include the combined type column and preparer note', ()
   assert.match(csv, /Georgia Power/);
   assert.match(html, /Income\/Expense/);
   assert.match(html, /Final tax treatment/);
+});
+
+test('receipt photos normalize and survive local store validation', () => {
+  const image = `data:image/jpeg;base64,${Buffer.from('bill-photo').toString('base64')}`;
+  const store = normalizeStore({ companies: [{ id: 'c', name: 'Company' }], transactions: [{ id: 't', date: '2026-09-08', type: 'expense', companyId: 'c', categoryId: 'expense-other', description: 'Bill', amountCents: 1250, businessUsePercent: 100, receiptImageData: image }] });
+  assert.equal(isReceiptImageData(image), true);
+  assert.equal(store.transactions[0].receiptImageData, image);
+  assert.deepEqual(validateStore(store), []);
 });

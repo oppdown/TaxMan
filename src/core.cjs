@@ -97,11 +97,16 @@ function normalizeStore(input) {
       businessUsePercent: transaction.type === 'income' ? null : normalizePercent(transaction.businessUsePercent ?? 100),
       homeOfficeRelated: Boolean(transaction.homeOfficeRelated),
       notes: cleanText(transaction.notes),
+      receiptImageData: isReceiptImageData(transaction.receiptImageData) ? transaction.receiptImageData : '',
       createdAt: cleanText(transaction.createdAt) || nowIso(),
       updatedAt: cleanText(transaction.updatedAt) || nowIso()
     })),
     updatedAt: cleanText(source.updatedAt) || nowIso()
   };
+}
+
+function isReceiptImageData(value) {
+  return typeof value === 'string' && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(value) && value.length <= 12000000;
 }
 
 function normalizePercent(value) {
@@ -256,4 +261,4 @@ function serializeCsv(store, year = store.taxYear) {
   return [headers, ...rows].map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n') + '\r\n';
 }
 
-module.exports = { TAX_YEAR, DEFAULT_COMPANIES, DEFAULT_CATEGORIES, createEmptyStore, normalizeStore, validateStore, isValidIsoDate, isValidTaxDate, normalizePercent, businessAmountCents, calculateSummary, formatCurrency, formatPercent, escapeHtml, buildReportHtml, serializeCsv };
+module.exports = { TAX_YEAR, DEFAULT_COMPANIES, DEFAULT_CATEGORIES, createEmptyStore, normalizeStore, validateStore, isValidIsoDate, isValidTaxDate, normalizePercent, businessAmountCents, calculateSummary, formatCurrency, formatPercent, escapeHtml, buildReportHtml, serializeCsv, isReceiptImageData };

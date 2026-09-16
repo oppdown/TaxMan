@@ -18,6 +18,7 @@ async function main() {
     document.getElementById('quick-add').click(); await wait();
     checks.quickAddOpensForm = Boolean(document.getElementById('transaction-form'));
     checks.newTransactionDateStartsBlank = document.getElementById('transaction-date')?.value === '';
+    checks.phonePhotoCapturePresent = Boolean(document.querySelector('[data-action="start-phone-capture"]')) && document.getElementById('receipt-photo')?.accept === 'image/*';
 
     set('transaction-company', '__create__'); await wait();
     checks.createNewFromDropdown = document.getElementById('modal-title')?.textContent.includes('Create new');
@@ -50,10 +51,10 @@ async function main() {
 
     await window.taxLedger.testEmitMenuAction('show-about'); await wait();
     checks.helpMenuOpens = Boolean(document.querySelector('[aria-labelledby="about-title"]'));
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.2.5');
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.3.0');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
     await window.taxLedger.testEmitMenuAction('check-for-updates'); await wait();
-    checks.checkForUpdatesAction = document.body.textContent.includes('Opened the TaxMan release page.');
+    checks.checkForUpdatesAction = document.body.textContent.includes('Automatic updates are available in the installed Windows version of TaxMan.');
     await window.taxLedger.testEmitMenuAction('view-reports'); await wait();
     checks.nativeViewActionWorks = document.getElementById('page-title').textContent === 'Reports & Backup';
 

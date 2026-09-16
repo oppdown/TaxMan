@@ -1,6 +1,6 @@
 {
   "name": "taxman",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "description": "Local income and expenditure ledger for tax preparation",
   "main": "src/main.cjs",
   "author": "TaxMan",
@@ -9,6 +9,9 @@
     "start": "electron .",
     "test": "node --test test/core.test.cjs test/menu.test.cjs",
     "test:ui": "electron test/ui-smoke.cjs",
+    "test:phone-capture": "electron test/phone-capture-integration.cjs",
+    "build:mobile": "node scripts/prepare-mobile-build.cjs",
+    "test:mobile": "npm run build:mobile && electron test/mobile-web-smoke.cjs",
     "test:restore": "electron test/restore-integration.cjs",
     "build": "electron-builder --win --x64",
     "dist": "electron-builder --win --x64"
@@ -19,7 +22,7 @@
     "asar": true,
     "files": [
       "src/**/*",
-    "package.json"
+      "package.json"
     ],
     "directories": {
       "output": "dist"
@@ -29,11 +32,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "artifactName": "TaxMan-${version}-Windows.${ext}"
@@ -48,10 +55,25 @@
     },
     "portable": {
       "artifactName": "TaxMan-${version}-Portable.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "oppdown",
+        "repo": "TaxMan",
+        "releaseType": "release"
+      }
+    ]
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
     "electron": "^39.0.0",
     "electron-builder": "^26.0.12"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "qrcode": "^1.5.4"
   }
 }

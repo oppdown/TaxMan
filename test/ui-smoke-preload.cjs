@@ -10,6 +10,7 @@ restoredStore.transactions.push({ id: 'restored-income', taxYear: 2026, date: '2
 let menuActionCallback;
 
 contextBridge.exposeInMainWorld('taxLedger', {
+  supportsPhoneCapture: true,
   loadStore: async () => testStore,
   saveStore: async (store) => { testStore = store; return store; },
   importJson: async () => ({ canceled: false, store: restoredStore }),
@@ -17,8 +18,8 @@ contextBridge.exposeInMainWorld('taxLedger', {
   exportCsv: async () => ({ canceled: false, path: 'test-ledger.csv' }),
   exportPdf: async () => ({ canceled: false, path: 'test-report.pdf' }),
   openFolder: async () => {},
-  checkForUpdates: async () => {},
-  getVersion: async () => '0.2.5',
+  checkForUpdates: async () => ({ status: 'unavailable', message: 'Automatic updates are available in the installed Windows version of TaxMan.' }),
+  getVersion: async () => '0.3.0',
   onMenuAction: (callback) => { menuActionCallback = callback; },
   testEmitMenuAction: async (action) => menuActionCallback?.(action)
 });
