@@ -49,7 +49,12 @@ if (!window.taxLedger) {
   async function pairWithComputer(baseUrl, code, deviceName) {
     const endpoint = String(baseUrl || '').trim().replace(/\/+$/, '');
     if (!/^https?:\/\/[^\s/]+(?::\d+)?$/i.test(endpoint)) throw new Error('Enter the PC address shown in TaxMan, including http://.');
-    const response = await fetch(`${endpoint}/pair`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: String(code || '').replace(/\D/g, ''), deviceName: String(deviceName || 'Android phone').trim() }) });
+    let response;
+    try {
+      response = await fetch(`${endpoint}/pair`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: String(code || '').replace(/\D/g, ''), deviceName: String(deviceName || 'Android phone').trim() }) });
+    } catch (error) {
+      throw new Error(`TaxMan could not reach ${endpoint}. Confirm the phone and PC are on the same Wi-Fi, then try the alternate PC address shown in the pairing window.`);
+    }
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.ok) throw new Error(payload.error || 'TaxMan could not pair with this PC.');
     const paired = { baseUrl: endpoint, token: payload.token, deviceName: payload.deviceName || deviceName || 'Android phone', computerName: payload.computerName || 'TaxMan on this PC', pairedAt: new Date().toISOString() };
@@ -102,7 +107,7 @@ if (!window.taxLedger) {
     exportPdf: async () => { window.print(); return { canceled: true }; },
     openFolder: async () => {},
     checkForUpdates: async () => { window.open('https://taxman.speedy-star-8288.chatgpt.site/download.html', '_blank'); },
-    getVersion: async () => '0.4.5',
+    getVersion: async () => '0.4.6',
     startPhoneCapture: async () => ({ direct: true }),
     stopPhoneCapture: async () => {},
     getPairedComputer: async () => loadPairedComputer(),

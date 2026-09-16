@@ -2,5 +2,12 @@
   "appId": "com.taxman.ledger",
   "appName": "TaxMan",
   "webDir": "mobile-dist",
-  "bundledWebRuntime": false
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  }
 }

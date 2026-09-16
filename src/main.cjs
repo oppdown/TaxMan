@@ -35,14 +35,27 @@ function backupPath() { return path.join(app.getPath('userData'), BACKUP_FILE); 
 function pairingPath() { return path.join(app.getPath('userData'), PAIRING_FILE); }
 function legacyDataPaths() { return LEGACY_USER_DATA_DIRECTORIES.flatMap((directory) => [path.join(app.getPath('appData'), directory, DATA_FILE), path.join(app.getPath('appData'), directory, BACKUP_FILE)]); }
 
-function lanAddress() {
+function lanAddresses() {
   const interfaces = os.networkInterfaces();
-  for (const entries of Object.values(interfaces)) {
+  const addresses = [];
+  for (const [interfaceName, entries] of Object.entries(interfaces)) {
     for (const entry of entries || []) {
-      if (entry.family === 'IPv4' && !entry.internal && !entry.address.startsWith('169.254.')) return entry.address;
+      if (entry.family === 'IPv4' && !entry.internal && !entry.address.startsWith('169.254.')) addresses.push({ address: entry.address, interfaceName });
     }
   }
-  return '127.0.0.1';
+  return addresses.sort((a, b) => {
+    const aWifi = /wi-?fi|wireless|wlan/i.test(a.interfaceName);
+    const bWifi = /wi-?fi|wireless|wlan/i.test(b.interfaceName);
+    if (aWifi !== bWifi) return aWifi ? -1 : 1;
+    const aVirtual = /virtual|vpn|vmware|hyper-v|bluetooth|loopback/i.test(a.interfaceName);
+    const bVirtual = /virtual|vpn|vmware|hyper-v|bluetooth|loopback/i.test(b.interfaceName);
+    if (aVirtual !== bVirtual) return aVirtual ? 1 : -1;
+    return a.interfaceName.localeCompare(b.interfaceName);
+  });
+}
+
+function lanAddress() {
+  return lanAddresses()[0]?.address || '127.0.0.1';
 }
 
 function jsonResponse(response, status, payload) {
@@ -179,9 +192,10 @@ async function stopPhoneCapture() {
 async function startPhonePairing() {
   await ensurePhoneServer();
   phonePairingSession = { code: String(Math.floor(100000 + Math.random() * 900000)), expiresAt: Date.now() + 10 * 60 * 1000 };
-  const url = `http://${lanAddress()}:${phoneServerPort}/pair?code=${phonePairingSession.code}`;
+  const addresses = lanAddresses().map((entry) => entry.address);
+  const url = `http://${addresses[0] || '127.0.0.1'}:${phoneServerPort}/pair?code=${phonePairingSession.code}`;
   const qrDataUrl = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 2, width: 240 });
-  return { code: phonePairingSession.code, url, qrDataUrl, expiresAt: phonePairingSession.expiresAt };
+  return { code: phonePairingSession.code, url, alternateUrls: addresses.slice(1).map((address) => `http://${address}:${phoneServerPort}/pair?code=${phonePairingSession.code}`), qrDataUrl, expiresAt: phonePairingSession.expiresAt };
 }
 
 async function startPhoneCapture() {

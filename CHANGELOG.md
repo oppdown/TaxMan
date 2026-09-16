@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.6 - 2026-09-16
+
+- Fixed phone pairing when the PC has both Ethernet and Wi-Fi by preferring the Wi-Fi address and showing alternate local addresses when available.
+- Enabled the Android WebView settings needed for the local HTTP pairing service, including cleartext local traffic and mixed-content requests.
+- Replaced the generic Android “Failed to fetch” pairing error with a clear same-Wi-Fi and alternate-address message.
+
 ## 0.4.5 - 2026-09-16
 
 - Added a time-based business-use calculator for shared utilities: enter average work hours per day and work days per week, then apply the calculated percentage to the transaction.
