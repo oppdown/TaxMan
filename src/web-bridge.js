@@ -40,6 +40,38 @@ if (!window.taxLedger) {
     const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name; link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   }
+  const PAIRED_PC_KEY = 'taxman.paired-pc.v1';
+  function loadPairedComputer() { try { const value = JSON.parse(localStorage.getItem(PAIRED_PC_KEY) || 'null'); return value && value.baseUrl && value.token ? value : null; } catch { return null; } }
+  function clearPairedComputer() { localStorage.removeItem(PAIRED_PC_KEY); }
+  async function pairWithComputer(baseUrl, code, deviceName) {
+    const endpoint = String(baseUrl || '').trim().replace(/\/+$/, '');
+    if (!/^https?:\/\/[^\s/]+(?::\d+)?$/i.test(endpoint)) throw new Error('Enter the PC address shown in TaxMan, including http://.');
+    const response = await fetch(`${endpoint}/pair`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: String(code || '').replace(/\D/g, ''), deviceName: String(deviceName || 'Android phone').trim() }) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) throw new Error(payload.error || 'TaxMan could not pair with this PC.');
+    const paired = { baseUrl: endpoint, token: payload.token, deviceName: payload.deviceName || deviceName || 'Android phone', computerName: payload.computerName || 'TaxMan on this PC', pairedAt: new Date().toISOString() };
+    localStorage.setItem(PAIRED_PC_KEY, JSON.stringify(paired));
+    return paired;
+  }
+  async function pollPairedCapture() {
+    const paired = loadPairedComputer();
+    if (!paired) return { paired: false, captureAvailable: false };
+    try {
+      const response = await fetch(`${paired.baseUrl}/paired/poll?token=${encodeURIComponent(paired.token)}`, { cache: 'no-store' });
+      const payload = await response.json().catch(() => ({}));
+      if (response.status === 403) { clearPairedComputer(); return { paired: false, captureAvailable: false, error: payload.error || 'This phone is no longer paired.' }; }
+      if (!response.ok || !payload.ok) throw new Error(payload.error || 'The PC could not be reached.');
+      return { ...payload, paired: true, deviceName: paired.deviceName, baseUrl: paired.baseUrl };
+    } catch (error) { return { paired: true, captureAvailable: false, offline: true, deviceName: paired.deviceName, error: error.message || 'The PC is unavailable.' }; }
+  }
+  async function sendPairedPhoto(imageData) {
+    const paired = loadPairedComputer();
+    if (!paired) throw new Error('Pair this phone with TaxMan first.');
+    const response = await fetch(`${paired.baseUrl}/paired/upload?token=${encodeURIComponent(paired.token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageData }) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) throw new Error(payload.error || 'The photo could not be sent to TaxMan.');
+    return payload;
+  }
   function csv(store, year) {
     const companies = new Map(store.companies.map((item) => [item.id, item.name]));
     const categories = new Map(store.categories.map((item) => [item.id, item.name]));
@@ -55,8 +87,10 @@ if (!window.taxLedger) {
     });
   }
   window.taxLedger = {
+    isMobileCompanion: true,
     supportsPhoneCapture: false,
     supportsOcr: false,
+    supportsPairing: true,
     loadStore: async () => { try { return normalizeStore(JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')); } catch { return emptyStore(); } },
     saveStore: async (store) => { const normalized = normalizeStore(store); try { localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized)); } catch { throw new Error('The mobile ledger is full. Export a JSON backup, then remove an old photo.'); } return normalized; },
     importJson: chooseJsonFile,
@@ -65,9 +99,14 @@ if (!window.taxLedger) {
     exportPdf: async () => { window.print(); return { canceled: true }; },
     openFolder: async () => {},
     checkForUpdates: async () => { window.open('https://taxman.speedy-star-8288.chatgpt.site/download.html', '_blank'); },
-    getVersion: async () => '0.4.1',
+    getVersion: async () => '0.4.2',
     startPhoneCapture: async () => ({ direct: true }),
     stopPhoneCapture: async () => {},
+    getPairedComputer: async () => loadPairedComputer(),
+    pairWithComputer,
+    pollPairedCapture,
+    sendPairedPhoto,
+    unpairComputer: async () => { clearPairedComputer(); return { removed: true }; },
     readBillPhoto: async () => { throw new Error('Bill reading is available in the installed Windows version of TaxMan.'); },
     onPhoneCaptureUploaded: () => {}
   };

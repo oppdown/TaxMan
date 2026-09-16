@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2 - 2026-09-16
+
+- Added a paired Android phone companion with a polished TaxMan capture center that matches the desktop theme.
+- Added one-time PC pairing with a short-lived code, remembered device token, local Wi-Fi polling, and direct photo upload to the open Windows transaction.
+- Kept QR capture as a fallback for phones that are not paired.
+- Added Android camera permission metadata and a release-gate integration test for pairing.
+
 ## 0.4.1 - 2026-09-16
 
 - Reissued the bill-capture and safer-upgrade release with the corrected application version shown consistently in the app, packages, documentation, and downloads.

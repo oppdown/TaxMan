@@ -11,4 +11,8 @@ const versionCode = versionParts[0] * 10000 + versionParts[1] * 100 + versionPar
 let gradle = fs.readFileSync(gradlePath, 'utf8');
 gradle = gradle.replace(/versionCode\s+\d+/, `versionCode ${versionCode}`).replace(/versionName\s+"[^"]+"/, `versionName "${packageJson.version}"`);
 fs.writeFileSync(gradlePath, gradle, 'utf8');
+const manifestPath = path.join(root, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+let manifest = fs.readFileSync(manifestPath, 'utf8');
+if (!manifest.includes('android.permission.CAMERA')) manifest = manifest.replace('</manifest>', '    <uses-permission android:name="android.permission.CAMERA" />\n</manifest>');
+fs.writeFileSync(manifestPath, manifest, 'utf8');
 console.log(`Configured Android version ${packageJson.version} (${versionCode})`);

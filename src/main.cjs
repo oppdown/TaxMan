@@ -16,17 +16,23 @@ const { createWorker } = require('tesseract.js');
 
 const DATA_FILE = 'data.json';
 const BACKUP_FILE = 'data.backup.json';
+const PAIRING_FILE = 'paired-phone.json';
+const PHONE_SERVER_PORT = 38741;
 const STABLE_USER_DATA_DIRECTORY = 'TaxMan';
 const LEGACY_USER_DATA_DIRECTORIES = ['tax-ledger-2025'];
 let mainWindow;
 let phoneCaptureServer;
 let phoneCaptureSession;
+let phonePairingSession;
+let pairedPhone;
+let phoneServerPort = PHONE_SERVER_PORT;
 let updateCheckInProgress = false;
 let updatePromptOpen = false;
 let ocrWorkerPromise;
 
 function dataPath() { return path.join(app.getPath('userData'), DATA_FILE); }
 function backupPath() { return path.join(app.getPath('userData'), BACKUP_FILE); }
+function pairingPath() { return path.join(app.getPath('userData'), PAIRING_FILE); }
 function legacyDataPaths() { return LEGACY_USER_DATA_DIRECTORIES.flatMap((directory) => [path.join(app.getPath('appData'), directory, DATA_FILE), path.join(app.getPath('appData'), directory, BACKUP_FILE)]); }
 
 function lanAddress() {
@@ -41,7 +47,7 @@ function lanAddress() {
 
 function jsonResponse(response, status, payload) {
   const body = JSON.stringify(payload);
-  response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(body) });
+  response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type', 'Content-Length': Buffer.byteLength(body) });
   response.end(body);
 }
 
@@ -60,52 +66,135 @@ async function readRequestBody(request, maxBytes = 9000000) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-async function stopPhoneCapture() {
+function publicPairedPhone() {
+  if (!pairedPhone) return null;
+  return { deviceName: pairedPhone.deviceName, pairedAt: pairedPhone.pairedAt, lastSeenAt: pairedPhone.lastSeenAt || null };
+}
+
+async function loadPairedPhone() {
+  try {
+    const value = JSON.parse(await fs.readFile(pairingPath(), 'utf8'));
+    if (value && typeof value.deviceToken === 'string' && typeof value.deviceName === 'string') pairedPhone = value;
+  } catch (error) { if (error.code !== 'ENOENT') console.warn('TaxMan could not load the paired phone.', error.message); }
+}
+
+async function savePairedPhone() {
+  await fs.mkdir(app.getPath('userData'), { recursive: true });
+  await fs.writeFile(pairingPath(), JSON.stringify(pairedPhone, null, 2), 'utf8');
+}
+
+async function closePhoneServer() {
   const server = phoneCaptureServer;
   phoneCaptureServer = null;
-  phoneCaptureSession = null;
   if (server) await new Promise((resolve) => server.close(() => resolve()));
 }
 
-async function startPhoneCapture() {
-  await stopPhoneCapture();
-  const token = crypto.randomBytes(18).toString('hex');
-  phoneCaptureSession = { token, imageData: '', expiresAt: Date.now() + 10 * 60 * 1000 };
-  phoneCaptureServer = http.createServer(async (request, response) => {
-    const url = new URL(request.url || '/', 'http://localhost');
-    if (!phoneCaptureSession || phoneCaptureSession.token !== url.searchParams.get('token') || Date.now() > phoneCaptureSession.expiresAt) {
+function validImageData(imageData) {
+  return typeof imageData === 'string' && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(imageData) && imageData.length <= 12000000;
+}
+
+function isPairedRequest(url) {
+  return pairedPhone && url.searchParams.get('token') === pairedPhone.deviceToken;
+}
+
+async function phoneServerRequest(request, response) {
+  const url = new URL(request.url || '/', 'http://localhost');
+  if (request.method === 'OPTIONS') { response.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); response.end(); return; }
+  if (request.method === 'POST' && url.pathname === '/pair') {
+    try {
+      const payload = JSON.parse(await readRequestBody(request, 100000));
+      const code = String(payload.code || '').replace(/\D/g, '');
+      if (!phonePairingSession || Date.now() > phonePairingSession.expiresAt || code !== phonePairingSession.code) throw new Error('That pairing code has expired or is incorrect. Start pairing again on the PC.');
+      const deviceName = String(payload.deviceName || 'Android phone').trim().slice(0, 80) || 'Android phone';
+      pairedPhone = { deviceName, deviceToken: crypto.randomBytes(24).toString('hex'), pairedAt: new Date().toISOString(), lastSeenAt: null };
+      phonePairingSession = null;
+      await savePairedPhone();
+      jsonResponse(response, 200, { ok: true, computerName: 'TaxMan on this PC', baseUrl: `http://${lanAddress()}:${phoneServerPort}`, token: pairedPhone.deviceToken, deviceName });
+    } catch (error) { jsonResponse(response, 400, { ok: false, error: error.message }); }
+    return;
+  }
+  if (request.method === 'GET' && url.pathname === '/pair') {
+    response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    response.end('Open TaxMan on your phone, choose Pair with PC, and enter the one-time code shown on this computer.');
+    return;
+  }
+  if (request.method === 'GET' && url.pathname === '/paired/poll') {
+    if (!isPairedRequest(url)) { jsonResponse(response, 403, { ok: false, error: 'This phone is not paired with TaxMan.' }); return; }
+    pairedPhone.lastSeenAt = new Date().toISOString();
+    const active = phoneCaptureSession && phoneCaptureSession.pairedToken === pairedPhone.deviceToken && Date.now() <= phoneCaptureSession.expiresAt;
+    jsonResponse(response, 200, { ok: true, computerName: 'TaxMan on this PC', captureAvailable: Boolean(active), expiresAt: active ? phoneCaptureSession.expiresAt : null });
+    return;
+  }
+  if (request.method === 'POST' && url.pathname === '/paired/upload') {
+    if (!isPairedRequest(url)) { jsonResponse(response, 403, { ok: false, error: 'This phone is not paired with TaxMan.' }); return; }
+    try {
+      const payload = JSON.parse(await readRequestBody(request));
+      if (!phoneCaptureSession || phoneCaptureSession.pairedToken !== pairedPhone.deviceToken || Date.now() > phoneCaptureSession.expiresAt) throw new Error('TaxMan is not currently waiting for a photo. Start capture on the PC first.');
+      if (!validImageData(payload.imageData)) throw new Error('The photo could not be read. Please try again with a smaller image.');
+      phoneCaptureSession.imageData = payload.imageData;
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('phone-capture:uploaded', payload.imageData);
+      jsonResponse(response, 200, { ok: true });
+    } catch (error) { jsonResponse(response, 400, { ok: false, error: error.message }); }
+    return;
+  }
+  if (request.method === 'GET' && url.pathname === '/capture') {
+    if (!phoneCaptureSession || phoneCaptureSession.token !== url.searchParams.get('token') || phoneCaptureSession.pairedToken || Date.now() > phoneCaptureSession.expiresAt) {
       response.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
       response.end('This TaxMan phone capture link has expired.');
       return;
     }
-    if (request.method === 'GET' && url.pathname === '/capture') {
-      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      response.end(await mobileCapturePage());
-      return;
-    }
-    if (request.method === 'POST' && url.pathname === '/upload') {
-      try {
-        const payload = JSON.parse(await readRequestBody(request));
-        if (typeof payload.imageData !== 'string' || !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(payload.imageData) || payload.imageData.length > 12000000) throw new Error('The photo could not be read. Please try again.');
-        phoneCaptureSession.imageData = payload.imageData;
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('phone-capture:uploaded', payload.imageData);
-        jsonResponse(response, 200, { ok: true });
-      } catch (error) { jsonResponse(response, 400, { ok: false, error: error.message }); }
-      return;
-    }
-    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-    response.end('Not found');
-  });
-  await new Promise((resolve, reject) => { phoneCaptureServer.once('error', reject); phoneCaptureServer.listen(0, '0.0.0.0', resolve); });
-  const port = phoneCaptureServer.address().port;
-  const url = `http://${lanAddress()}:${port}/capture?token=${token}`;
+    response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    response.end(await mobileCapturePage());
+    return;
+  }
+  if (request.method === 'POST' && url.pathname === '/upload') {
+    if (!phoneCaptureSession || phoneCaptureSession.token !== url.searchParams.get('token') || phoneCaptureSession.pairedToken || Date.now() > phoneCaptureSession.expiresAt) { jsonResponse(response, 403, { ok: false, error: 'This TaxMan phone capture link has expired.' }); return; }
+    try {
+      const payload = JSON.parse(await readRequestBody(request));
+      if (!validImageData(payload.imageData)) throw new Error('The photo could not be read. Please try again with a smaller image.');
+      phoneCaptureSession.imageData = payload.imageData;
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('phone-capture:uploaded', payload.imageData);
+      jsonResponse(response, 200, { ok: true });
+    } catch (error) { jsonResponse(response, 400, { ok: false, error: error.message }); }
+    return;
+  }
+  response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+  response.end('Not found');
+}
+
+async function ensurePhoneServer() {
+  if (phoneCaptureServer) return;
+  phoneCaptureServer = http.createServer((request, response) => { phoneServerRequest(request, response).catch((error) => jsonResponse(response, 500, { ok: false, error: error.message || 'TaxMan phone service error.' })); });
+  try {
+    await new Promise((resolve, reject) => { phoneCaptureServer.once('error', reject); phoneCaptureServer.listen(PHONE_SERVER_PORT, '0.0.0.0', resolve); });
+    phoneServerPort = phoneCaptureServer.address().port;
+  } catch (error) { await closePhoneServer(); if (error.code === 'EADDRINUSE') throw new Error(`TaxMan could not start its phone service because port ${PHONE_SERVER_PORT} is already in use.`); throw error; }
+}
+
+async function stopPhoneCapture() {
+  phoneCaptureSession = null;
+  if (!pairedPhone && !phonePairingSession) await closePhoneServer();
+}
+
+async function startPhonePairing() {
+  await ensurePhoneServer();
+  phonePairingSession = { code: String(Math.floor(100000 + Math.random() * 900000)), expiresAt: Date.now() + 10 * 60 * 1000 };
+  const url = `http://${lanAddress()}:${phoneServerPort}/pair?code=${phonePairingSession.code}`;
+  const qrDataUrl = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 2, width: 240 });
+  return { code: phonePairingSession.code, url, qrDataUrl, expiresAt: phonePairingSession.expiresAt };
+}
+
+async function startPhoneCapture() {
+  await stopPhoneCapture();
+  await ensurePhoneServer();
+  const token = crypto.randomBytes(18).toString('hex');
+  phoneCaptureSession = { token, pairedToken: pairedPhone?.deviceToken || '', imageData: '', expiresAt: Date.now() + 10 * 60 * 1000 };
+  if (pairedPhone) return { paired: true, deviceName: pairedPhone.deviceName, expiresAt: phoneCaptureSession.expiresAt };
+  const url = `http://${lanAddress()}:${phoneServerPort}/capture?token=${token}`;
   try {
     const qrDataUrl = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 2, width: 240 });
     return { url, qrDataUrl, expiresAt: phoneCaptureSession.expiresAt };
-  } catch (error) {
-    await stopPhoneCapture();
-    throw error;
-  }
+  } catch (error) { await stopPhoneCapture(); throw error; }
 }
 
 function sendMenuAction(action) {
@@ -257,6 +346,9 @@ function registerIpc() {
   ipcMain.handle('app:version', () => app.getVersion());
   ipcMain.handle('phone-capture:start', () => startPhoneCapture());
   ipcMain.handle('phone-capture:stop', () => stopPhoneCapture());
+  ipcMain.handle('phone-pairing:start', () => startPhonePairing());
+  ipcMain.handle('phone-pairing:get', () => publicPairedPhone());
+  ipcMain.handle('phone-pairing:remove', async () => { pairedPhone = null; phonePairingSession = null; await fs.rm(pairingPath(), { force: true }); if (!phoneCaptureSession) await closePhoneServer(); return { removed: true }; });
   ipcMain.handle('ocr:bill', (_event, imageData, store) => readBillPhoto(imageData, store));
 }
 
@@ -266,13 +358,15 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   app.setPath('userData', path.join(app.getPath('appData'), STABLE_USER_DATA_DIRECTORY));
   app.setAppUserModelId('com.localtaxledger.ledger2025');
+  await loadPairedPhone();
   registerIpc();
   createWindow();
   configureAutoUpdater();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  if (pairedPhone) ensurePhoneServer().catch((error) => console.warn(error.message));
 });
+app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('before-quit', () => { if (phoneCaptureServer) phoneCaptureServer.close(); if (ocrWorkerPromise) ocrWorkerPromise.then((worker) => worker?.terminate()).catch(() => {}); });

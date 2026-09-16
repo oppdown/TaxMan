@@ -1,6 +1,6 @@
 {
   "name": "taxman",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Local income and expenditure ledger for tax preparation",
   "main": "src/main.cjs",
   "author": "TaxMan",
@@ -10,6 +10,7 @@
     "test": "node --test test/core.test.cjs test/menu.test.cjs test/store-file.test.cjs test/ocr.test.cjs",
     "test:ui": "electron test/ui-smoke.cjs",
     "test:phone-capture": "electron test/phone-capture-integration.cjs",
+    "test:pairing": "electron test/pairing-integration.cjs",
     "build:mobile": "node scripts/prepare-mobile-build.cjs",
     "test:mobile": "npm run build:mobile && electron test/mobile-web-smoke.cjs",
     "test:restore": "electron test/restore-integration.cjs",

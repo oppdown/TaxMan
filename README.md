@@ -2,7 +2,7 @@
 
 ![TaxMan icon](src/assets/taxman-icon.png)
 
-Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.1 adds reviewable on-device bill reading and reusable company home-office preferences while retaining the Android/mobile runtime.
+Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.2 adds a paired Android phone companion with a polished capture center while retaining reviewable on-device bill reading and local-first records.
 
 ## Use
 
@@ -12,7 +12,7 @@ Local-first ledger for preparing income and expenditure records for a tax prepar
 4. Review totals on the Dashboard and use Reports & Backup to export the selected-year PDF/CSV or a full JSON backup.
 5. Use Help > Keyboard shortcuts for faster entry. The Companies & Sources page includes a guarded Clear company data control for setup cleanup.
 
-On Android, TaxMan runs as a local-only app with the same transaction workflow, device camera access, JSON backup, and CSV export. Android data is stored on that device; it is not synchronized with the Windows computer.
+On Android, TaxMan runs as a local-only app with the same transaction workflow, device camera access, JSON backup, and CSV export. Its capture center can pair with a Windows TaxMan PC once, then receive bill-photo requests without another QR scan. Android data is stored on that device; it is not synchronized with the Windows computer.
 
 The app stores records locally on the computer. It does not connect to a cloud service or submit tax forms. The report is a recordkeeping aid; final tax treatment must be confirmed by the tax preparer.
 
