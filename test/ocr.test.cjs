@@ -23,3 +23,18 @@ test('bill OCR parser leaves unknown vendors for user review', () => {
   assert.equal(result.vendor, 'New Vendor');
   assert.equal(result.amountCents, 999);
 });
+
+test('bill OCR prefers due date over previous payment date', () => {
+  const result = extractBillFields('Hart EMC\n04/17/26 Previous payment\nDUE DATE 05/17/26\nAmount Due $88.00');
+  assert.equal(result.date, '2026-05-17');
+});
+
+test('bill OCR handles compact due dates and ignores compact previous-payment dates', () => {
+  const result = extractBillFields('Electric Provider\n041726 Previous payment\nDue Date\n051726\nTotal $42.00');
+  assert.equal(result.date, '2026-05-17');
+});
+
+test('bill OCR does not use a previous payment as the bill date when no due date is present', () => {
+  const result = extractBillFields('Electric Provider\n041726 Previous payment\nAmount Due $42.00');
+  assert.equal(result.date, '');
+});

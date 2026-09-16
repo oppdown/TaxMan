@@ -30,7 +30,7 @@ if (!window.taxLedger) {
       taxYear: Number.isInteger(source.taxYear) ? source.taxYear : base.taxYear,
       companies: Array.isArray(source.companies) ? source.companies.map((item) => ({ id: String(item.id || cryptoId('company')), name: String(item.name || '').trim(), classification: String(item.classification || 'Other'), phone: String(item.phone || ''), email: String(item.email || ''), website: String(item.website || ''), notes: String(item.notes || ''), alwaysHomeOfficeRelated: Boolean(item.alwaysHomeOfficeRelated) })) : base.companies,
       categories: Array.isArray(source.categories) ? source.categories.map((item) => ({ id: String(item.id || cryptoId('category')), type: item.type === 'income' ? 'income' : 'expense', name: String(item.name || '').trim(), active: item.active !== false })) : base.categories,
-      transactions: Array.isArray(source.transactions) ? source.transactions.map((item) => ({ ...item, receiptImageData: typeof item.receiptImageData === 'string' ? item.receiptImageData : '' })) : [],
+      transactions: Array.isArray(source.transactions) ? source.transactions.map((item) => ({ ...item, paidDate: typeof item.paidDate === 'string' ? item.paidDate : '', receiptImageData: typeof item.receiptImageData === 'string' ? item.receiptImageData : '' })) : [],
       updatedAt: new Date().toISOString()
     };
   }
@@ -99,7 +99,7 @@ if (!window.taxLedger) {
     exportPdf: async () => { window.print(); return { canceled: true }; },
     openFolder: async () => {},
     checkForUpdates: async () => { window.open('https://taxman.speedy-star-8288.chatgpt.site/download.html', '_blank'); },
-    getVersion: async () => '0.4.3',
+    getVersion: async () => '0.4.4',
     startPhoneCapture: async () => ({ direct: true }),
     stopPhoneCapture: async () => {},
     getPairedComputer: async () => loadPairedComputer(),

@@ -2,7 +2,7 @@
 
 ![TaxMan icon](src/assets/taxman-icon.png)
 
-Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.3 adds QR-based one-time pairing for the Android phone companion while retaining reviewable on-device bill reading and local-first records.
+Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.4 adds smarter due-date reading and payment tracking while retaining QR-based one-time Android pairing and local-first records.
 
 ## Use
 
@@ -18,7 +18,7 @@ The app stores records locally on the computer. It does not connect to a cloud s
 
 Bill reading runs on the Windows device after the photo is attached. It suggests fields for review; OCR can misread dates, vendors, or amounts, so verify every field before saving. Android currently keeps the photo-and-manual-entry workflow while its local OCR package is prepared.
 
-Phone capture uses the same local Wi-Fi network as the computer. TaxMan shows a locally generated QR code for one-time pairing and for the temporary capture page, with manual address entry available as a fallback. Pairing uses a short-lived code and remembered local token; the link expires after a short time, and the photo is compressed on the phone before being sent directly to TaxMan. The app does not perform automatic tax decisions or silently create a transaction from the image; verify the bill details in the form before saving.
+Phone capture uses the same local Wi-Fi network as the computer. TaxMan shows a locally generated QR code for one-time pairing and for the temporary capture page, with manual address entry available as a fallback. Pairing uses a short-lived code and remembered local token; the link expires after a short time, and the photo is compressed on the phone before being sent directly to TaxMan. After saving a transaction, use **Mark paid** to record the date payment cleared; this is separate from the bill date. The app does not perform automatic tax decisions or silently create a transaction from the image; verify the bill details in the form before saving.
 
 Installed Windows builds can use Help > Check for Updates to check for a newer TaxMan release, download it only after confirmation, and ask before restarting to install it. Windows installers request elevation automatically when needed, so users can start setup with a normal double-click. Development builds keep the update action disabled until installed.
 

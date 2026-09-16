@@ -77,3 +77,15 @@ test('receipt photos normalize and survive local store validation', () => {
   assert.equal(store.transactions[0].receiptImageData, image);
   assert.deepEqual(validateStore(store), []);
 });
+
+test('paid date normalizes, persists, and validates independently from bill date', () => {
+  const store = normalizeStore({ companies: [{ id: 'c', name: 'Company' }], transactions: [{ id: 't', date: '2026-05-17', paidDate: '2026-05-20', type: 'expense', companyId: 'c', categoryId: 'expense-other', description: 'Bill', amountCents: 1250, businessUsePercent: 100 }] });
+  assert.equal(store.transactions[0].date, '2026-05-17');
+  assert.equal(store.transactions[0].paidDate, '2026-05-20');
+  assert.deepEqual(validateStore(store), []);
+});
+
+test('validation rejects an invalid paid date', () => {
+  const store = normalizeStore({ companies: [{ id: 'c', name: 'Company' }], transactions: [{ id: 't', date: '2026-05-17', paidDate: '2026-02-31', type: 'expense', companyId: 'c', categoryId: 'expense-other', description: 'Bill', amountCents: 1250, businessUsePercent: 100 }] });
+  assert.ok(validateStore(store).some((error) => error.includes('Invalid paid date')));
+});

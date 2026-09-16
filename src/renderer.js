@@ -2,7 +2,7 @@
 
 const TAX_YEAR = 2025;
 const NEW_COMPANY = '__create__';
-const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, appVersion: '0.4.3', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
+const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, paymentModal: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, appVersion: '0.4.4', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
 let companionPollTimer;
 let pairingPollTimer;
 let qrScannerStream;
@@ -31,6 +31,7 @@ function bindEvents() {
     if (formId === 'company-form') { event.preventDefault(); await saveCompany(new FormData(event.target)); }
     if (formId === 'category-form') { event.preventDefault(); await saveCategory(new FormData(event.target)); }
     if (formId === 'pair-computer-form') { event.preventDefault(); await pairComputer(new FormData(event.target)); }
+    if (formId === 'payment-form') { event.preventDefault(); await savePayment(new FormData(event.target)); }
   });
   document.addEventListener('change', (event) => {
     if (event.target.id === 'year-select') { state.selectedYear = Number(event.target.value); render(); }
@@ -75,7 +76,7 @@ function bindEvents() {
     if (event.ctrlKey && event.key.toLowerCase() === 'n') { event.preventDefault(); openTransaction('expense'); }
     else if (event.ctrlKey && event.key.toLowerCase() === 's' && state.transactionDraft) { event.preventDefault(); document.getElementById('transaction-form')?.requestSubmit(); }
     else if (event.ctrlKey && /^[1-4]$/.test(event.key)) { event.preventDefault(); state.view = ['dashboard', 'transactions', 'companies', 'reports'][Number(event.key) - 1]; state.transactionDraft = null; render(); }
-    else if (event.key === 'Escape') { if (state.qrScanner || state.companyModal || state.phoneCapture || state.phonePairing || state.companionPairing || state.aboutOpen || state.shortcutsOpen) { if (state.qrScanner) stopQrScanner(); if (state.phoneCapture) window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.phonePairing = null; state.companionPairing = false; state.companionPairingData = null; state.qrScanner = false; state.aboutOpen = false; state.shortcutsOpen = false; render(); } else if (state.transactionDraft) { state.transactionDraft = null; render(); } else if (state.openMenu) { state.openMenu = null; render(); } }
+    else if (event.key === 'Escape') { if (state.qrScanner || state.paymentModal || state.companyModal || state.phoneCapture || state.phonePairing || state.companionPairing || state.aboutOpen || state.shortcutsOpen) { if (state.qrScanner) stopQrScanner(); if (state.phoneCapture) window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.phonePairing = null; state.companionPairing = false; state.companionPairingData = null; state.qrScanner = false; state.paymentModal = null; state.aboutOpen = false; state.shortcutsOpen = false; render(); } else if (state.transactionDraft) { state.transactionDraft = null; render(); } else if (state.openMenu) { state.openMenu = null; render(); } }
   });
 }
 
@@ -86,9 +87,12 @@ async function handleAction(action, element) {
   if (action === 'cancel-form') { state.transactionDraft = null; render(); }
   if (action === 'edit-transaction') openTransaction('', element.dataset.id);
   if (action === 'delete-transaction') await deleteTransaction(element.dataset.id);
+  if (action === 'mark-paid') { state.paymentModal = { id: element.dataset.id }; render(); }
+  if (action === 'close-payment-modal') { state.paymentModal = null; render(); }
+  if (action === 'unmark-paid') await unmarkPaid();
   if (action === 'add-company') { state.companyModal = { editId: null, returnToTransaction: false }; render(); }
   if (action === 'edit-company') { state.companyModal = { editId: element.dataset.id, returnToTransaction: false }; render(); }
-  if (action === 'close-modal') { if (state.qrScanner) stopQrScanner(); if (state.phoneCapture) await window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.phonePairing = null; state.companionPairing = false; state.companionPairingData = null; state.qrScanner = false; state.aboutOpen = false; state.shortcutsOpen = false; render(); }
+  if (action === 'close-modal') { if (state.qrScanner) stopQrScanner(); if (state.phoneCapture) await window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.phonePairing = null; state.companionPairing = false; state.companionPairingData = null; state.qrScanner = false; state.paymentModal = null; state.aboutOpen = false; state.shortcutsOpen = false; render(); }
   if (action === 'start-phone-capture') await beginPhoneCapture();
   if (action === 'pair-phone') await beginPhonePairing();
   if (action === 'unpair-phone') { await window.taxLedger.unpairPhone(); state.phoneCapture = null; toast('Phone pairing removed.'); render(); }
@@ -110,6 +114,7 @@ async function handleAction(action, element) {
   if (action === 'file-save') await saveLedger();
   if (action === 'file-save-as') await exportFile('json');
   if (action === 'use-today') { const input = document.getElementById('transaction-date'); if (input) { input.value = formatDateInput(todayIso()); input.focus(); } }
+  if (action === 'use-paid-today') { const input = document.getElementById('paid-date'); if (input) { input.value = formatDateInput(todayIso()); input.focus(); } }
   if (action === 'delete-company') await deleteCompany(element.dataset.id);
   if (action === 'clear-companies') await clearCompanyData();
   if (action === 'toggle-category') await toggleCategory(element.dataset.id);
@@ -129,7 +134,7 @@ function render() {
   document.getElementById('year-eyebrow').textContent = `${state.selectedYear} tax preparation`;
   populateYearSelector();
   document.getElementById('view-root').innerHTML = window.taxLedger.isMobileCompanion && state.view === 'dashboard' ? renderCompanionDashboard() : state.view === 'dashboard' ? renderDashboard() : state.view === 'transactions' ? renderTransactions() : state.view === 'companies' ? renderCompanies() : renderReports();
-  document.getElementById('modal-root').innerHTML = state.companyModal ? renderCompanyModal() : state.phonePairing ? renderPhonePairingModal() : state.qrScanner ? renderQrScannerModal() : state.companionPairing ? renderCompanionPairingModal() : state.phoneCapture ? renderPhoneCaptureModal() : state.aboutOpen ? renderAboutModal() : state.shortcutsOpen ? renderShortcutsModal() : '';
+  document.getElementById('modal-root').innerHTML = state.companyModal ? renderCompanyModal() : state.phonePairing ? renderPhonePairingModal() : state.qrScanner ? renderQrScannerModal() : state.paymentModal ? renderPaymentModal() : state.companionPairing ? renderCompanionPairingModal() : state.phoneCapture ? renderPhoneCaptureModal() : state.aboutOpen ? renderAboutModal() : state.shortcutsOpen ? renderShortcutsModal() : '';
 }
 
 function navigateTo(view) {
@@ -182,6 +187,16 @@ function renderTransactions() {
     <div class="panel-body"><div class="filters"><input id="transaction-search" type="search" placeholder="Search company, description, or notes" value="${escapeAttr(state.search)}"><select id="type-filter"><option value="all" ${state.typeFilter === 'all' ? 'selected' : ''}>All types</option><option value="income" ${state.typeFilter === 'income' ? 'selected' : ''}>Income</option><option value="expense" ${state.typeFilter === 'expense' ? 'selected' : ''}>Expense</option></select><select id="category-filter"><option value="all">All categories</option>${categories.map((category) => `<option value="${escapeAttr(category.id)}" ${state.categoryFilter === category.id ? 'selected' : ''}>${escapeHtml(category.name)}</option>`).join('')}</select><span class="muted">${filtered.length} of ${transactionsForYear(state.store, state.selectedYear).length} entries</span></div></div>${filtered.length ? transactionTable(filtered, true) : emptyState('No matching transactions', 'Try clearing a filter or add a new entry.')}</section>`;
 }
 
+function renderPaymentModal() {
+  const transaction = state.store.transactions.find((item) => item.id === state.paymentModal?.id);
+  if (!transaction) return '';
+  const company = findCompany(transaction.companyId)?.name || 'Unknown company';
+  const category = findCategory(transaction.categoryId)?.name || 'Unknown category';
+  const paid = Boolean(transaction.paidDate);
+  const paidDate = transaction.paidDate || todayIso();
+  return `<div class="modal-backdrop"><section class="modal payment-modal" role="dialog" aria-modal="true" aria-labelledby="payment-title"><div class="modal-header"><div><span class="eyebrow">Payment status</span><h2 id="payment-title">${paid ? 'Update payment' : 'Mark transaction paid'}</h2></div><button class="close-button" data-action="close-payment-modal" aria-label="Close">×</button></div><div class="modal-body"><div class="payment-summary"><div><span>Company / source</span><strong>${escapeHtml(company)}</strong></div><div><span>Description</span><strong>${escapeHtml(transaction.description)}</strong></div><div><span>Amount</span><strong>${money(transaction.amountCents)}</strong></div><div><span>Bill date</span><strong>${escapeHtml(formatDateDisplay(transaction.date))}</strong></div>${transaction.type === 'expense' ? `<div><span>Category</span><strong>${escapeHtml(category)}</strong></div>` : ''}</div><form id="payment-form"><div class="field"><label class="required" for="paid-date">${paid ? 'Paid date' : 'Date paid'}</label><div class="inline-field"><input id="paid-date" name="paidDate" type="text" inputmode="numeric" autocomplete="off" placeholder="MMDDYY or MM/DD/YYYY" required value="${escapeAttr(formatDateInput(paidDate))}"><button type="button" class="secondary-button compact-button" data-action="use-paid-today">Today</button></div><small>Enter the date the payment actually cleared. The bill date stays unchanged.</small></div><div class="modal-actions"><button type="button" class="secondary-button" data-action="close-payment-modal">Cancel</button>${paid ? '<button type="button" class="danger-button" data-action="unmark-paid">Mark as unpaid</button>' : ''}<button type="submit" class="primary-button">${paid ? 'Save paid date' : 'Mark paid'}</button></div></form></div></section></div>`;
+}
+
 function renderTransactionForm() {
   const draft = state.transactionDraft;
   const isIncome = draft.type === 'income';
@@ -194,6 +209,7 @@ function renderTransactionForm() {
     <div class="field"><label class="required" for="transaction-amount">Amount (USD)</label><input id="transaction-amount" name="amount" inputmode="decimal" required placeholder="0.00" value="${escapeAttr(draft.amountCents ? (draft.amountCents / 100).toFixed(2) : '')}"><small>Enter the full amount paid or received.</small></div>
     ${isIncome ? '' : `<div class="field"><label class="required" for="business-use">Business use</label><input id="business-use" name="businessUsePercent" type="number" min="0" max="100" step="0.01" required value="${escapeAttr(draft.businessUsePercent ?? 100)}"><small>Use 100% for a fully business expense; shared costs can use a lower percentage.</small></div><div class="check-field"><input id="home-office-related" name="homeOfficeRelated" type="checkbox" ${draft.homeOfficeRelated ? 'checked' : ''}><label for="home-office-related">Mark as home-office-related</label></div>`}
     <div class="field wide"><label>Bill photo</label><div class="photo-actions">${window.taxLedger.supportsPhoneCapture ? '<button type="button" class="secondary-button" data-action="start-phone-capture">Take with phone</button>' : '<button type="button" class="secondary-button" data-action="take-receipt-photo">Take photo</button>'}<label class="secondary-button file-button">Choose photo<input id="receipt-photo" type="file" accept="image/*" capture="environment"></label>${draft.receiptImageData && window.taxLedger.supportsOcr ? `<button type="button" class="secondary-button" data-action="read-bill-photo" ${state.ocr?.busy ? 'disabled' : ''}>${state.ocr?.busy ? 'Reading bill…' : 'Read bill details'}</button>` : ''}${draft.receiptImageData ? '<span class="photo-attached">Photo attached</span>' : '<span class="muted">Optional</span>'}</div>${draft.receiptImageData ? `<div class="receipt-preview"><img src="${escapeAttr(draft.receiptImageData)}" alt="Attached bill photo"><button type="button" class="icon-button danger-text" data-action="remove-receipt-photo">Remove photo</button></div>${state.ocr?.message ? `<div class="notice"><strong>${escapeHtml(state.ocr.message)}</strong> Verify every suggested field before saving.</div>` : ''}${state.ocr?.text ? `<details class="ocr-details"><summary>Show text read from bill</summary><pre>${escapeHtml(state.ocr.text)}</pre></details>` : ''}` : `<small>${window.taxLedger.supportsPhoneCapture ? 'Use the phone link for a camera photo, or choose an image from this computer.' : 'Take a photo or choose an image. The bill stays on this device.'}</small>`}</div>
+    ${draft.id ? `<div class="field wide"><label>Payment status</label><div class="payment-form-row"><span class="${draft.paidDate ? 'paid-pill' : 'unpaid-pill'}">${draft.paidDate ? `Paid ${escapeHtml(formatDateDisplay(draft.paidDate))}` : 'Not marked paid'}</span><button type="button" class="secondary-button" data-action="mark-paid" data-id="${escapeAttr(draft.id)}">${draft.paidDate ? 'Update payment' : 'Mark paid'}</button></div></div>` : ''}
     <div class="field wide"><label for="transaction-notes">Notes</label><textarea id="transaction-notes" name="notes" maxlength="500" placeholder="Optional receipt reference or context">${escapeHtml(draft.notes)}</textarea></div>
   </div><div class="form-actions"><button type="button" class="secondary-button" data-action="cancel-form">Cancel</button><button type="submit" class="primary-button">Save transaction</button></div></form></div></section>`;
 }
@@ -203,9 +219,10 @@ function transactionTable(items, actions) {
     const company = findCompany(transaction.companyId)?.name || 'Unknown company';
     const category = findCategory(transaction.categoryId)?.name || 'Unknown category';
     const allocated = transaction.type === 'expense' ? businessAmount(transaction) : 0;
-  return `<tr><td>${escapeHtml(formatDateDisplay(transaction.date))}</td><td><span class="type-pill ${transaction.type === 'income' ? 'type-income' : 'type-expense'}">${transaction.type === 'income' ? 'Income' : 'Expense'}</span></td><td><strong>${escapeHtml(company)}</strong><br><span class="muted">${escapeHtml(category)}</span></td><td>${escapeHtml(transaction.description)}${transaction.homeOfficeRelated ? '<br><span class="tag">Home office</span>' : ''}</td><td class="money">${money(transaction.amountCents)}</td><td class="money">${transaction.type === 'expense' ? `${formatPercent(transaction.businessUsePercent)}<br><span class="muted">${money(allocated)}</span>` : '—'}</td>${actions ? `<td class="row-actions"><button class="icon-button" data-action="edit-transaction" data-id="${escapeAttr(transaction.id)}" title="Edit">Edit</button><button class="icon-button danger-text" data-action="delete-transaction" data-id="${escapeAttr(transaction.id)}" title="Delete">Delete</button></td>` : ''}</tr>`;
+  const paymentStatus = transaction.paidDate ? `<span class="paid-pill">Paid</span><br><span class="muted">${escapeHtml(formatDateDisplay(transaction.paidDate))}</span>` : actions ? `<button class="secondary-button compact-button" data-action="mark-paid" data-id="${escapeAttr(transaction.id)}">Mark paid</button>` : '<span class="unpaid-pill">Unpaid</span>';
+  return `<tr><td>${escapeHtml(formatDateDisplay(transaction.date))}</td><td><span class="type-pill ${transaction.type === 'income' ? 'type-income' : 'type-expense'}">${transaction.type === 'income' ? 'Income' : 'Expense'}</span></td><td><strong>${escapeHtml(company)}</strong><br><span class="muted">${escapeHtml(category)}</span></td><td>${escapeHtml(transaction.description)}${transaction.homeOfficeRelated ? '<br><span class="tag">Home office</span>' : ''}</td><td class="money">${money(transaction.amountCents)}</td><td class="money">${transaction.type === 'expense' ? `${formatPercent(transaction.businessUsePercent)}<br><span class="muted">${money(allocated)}</span>` : '—'}</td><td class="payment-status">${paymentStatus}</td>${actions ? `<td class="row-actions"><button class="icon-button" data-action="edit-transaction" data-id="${escapeAttr(transaction.id)}" title="Edit">Edit</button><button class="icon-button danger-text" data-action="delete-transaction" data-id="${escapeAttr(transaction.id)}" title="Delete">Delete</button></td>` : ''}</tr>`;
   }).join('');
-  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Type</th><th>Company/source &amp; category</th><th>Description</th><th>Amount</th><th>Business use<br>Allocated</th>${actions ? '<th>Actions</th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Type</th><th>Company/source &amp; category</th><th>Description</th><th>Amount</th><th>Business use<br>Allocated</th><th>Payment</th>${actions ? '<th>Actions</th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function renderCompanies() {
@@ -443,7 +460,7 @@ function resizeReceiptImage(file) {
 function openTransaction(type, idValue) {
   state.view = 'transactions';
   if (idValue) { const transaction = state.store.transactions.find((item) => item.id === idValue); state.transactionDraft = { ...transaction }; state.selectedYear = transaction.taxYear; }
-  else { state.transactionDraft = { type: type || 'expense', date: '', companyId: '', categoryId: '', description: '', amountCents: 0, businessUsePercent: 100, homeOfficeRelated: false, notes: '', receiptImageData: '' }; }
+  else { state.transactionDraft = { type: type || 'expense', date: '', companyId: '', categoryId: '', description: '', amountCents: 0, businessUsePercent: 100, homeOfficeRelated: false, paidDate: '', notes: '', receiptImageData: '' }; }
   state.ocr = null;
   render();
   setTimeout(() => document.getElementById('transaction-date')?.focus(), 0);
@@ -464,7 +481,7 @@ async function saveTransaction(form) {
   if (type === 'expense' && (!Number.isFinite(percent) || percent < 0 || percent > 100)) errors.push('Business use must be between 0% and 100%.');
   if (errors.length) { toast(errors[0], true); return; }
   const existing = state.transactionDraft.id ? state.store.transactions.find((transaction) => transaction.id === state.transactionDraft.id) : null;
-  const transaction = { id: existing?.id || `transaction-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, taxYear: transactionYear, date, type, companyId: String(form.get('companyId')), categoryId: String(form.get('categoryId')), description: String(form.get('description')).trim(), amountCents, businessUsePercent: type === 'expense' ? Math.round(percent * 100) / 100 : null, homeOfficeRelated: type === 'expense' && form.get('homeOfficeRelated') === 'on', notes: String(form.get('notes') || '').trim(), receiptImageData: state.transactionDraft.receiptImageData || '', createdAt: existing?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const transaction = { id: existing?.id || `transaction-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, taxYear: transactionYear, date, type, companyId: String(form.get('companyId')), categoryId: String(form.get('categoryId')), description: String(form.get('description')).trim(), amountCents, businessUsePercent: type === 'expense' ? Math.round(percent * 100) / 100 : null, homeOfficeRelated: type === 'expense' && form.get('homeOfficeRelated') === 'on', paidDate: existing?.paidDate || state.transactionDraft.paidDate || '', notes: String(form.get('notes') || '').trim(), receiptImageData: state.transactionDraft.receiptImageData || '', createdAt: existing?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
   if (existing) state.store.transactions = state.store.transactions.map((item) => item.id === existing.id ? transaction : item); else state.store.transactions.push(transaction);
   try { await persist(); } catch (error) { toast(error.message || 'Transaction could not be saved.', true); return; }
   state.transactionDraft = null; state.selectedYear = transactionYear; toast(existing ? 'Transaction updated.' : 'Transaction saved.'); render();
@@ -474,6 +491,32 @@ async function deleteTransaction(idValue) {
   const transaction = state.store.transactions.find((item) => item.id === idValue);
   if (!transaction || !window.confirm(`Delete the ${transaction.type} entry for ${money(transaction.amountCents)}?`)) return;
   state.store.transactions = state.store.transactions.filter((item) => item.id !== idValue); try { await persist(); } catch (error) { toast(error.message || 'Transaction could not be deleted.', true); return; } toast('Transaction deleted.'); render();
+}
+
+async function savePayment(form) {
+  const paymentDate = parseDateInput(form.get('paidDate'));
+  if (!paymentDate) { toast('Enter a valid paid date such as 090826 or 09/08/2026.', true); return; }
+  const transaction = state.store.transactions.find((item) => item.id === state.paymentModal?.id);
+  if (!transaction) return;
+  const updated = { ...transaction, paidDate: paymentDate, updatedAt: new Date().toISOString() };
+  state.store.transactions = state.store.transactions.map((item) => item.id === updated.id ? updated : item);
+  if (state.transactionDraft?.id === updated.id) state.transactionDraft.paidDate = paymentDate;
+  try { await persist(); } catch (error) { toast(error.message || 'Payment status could not be saved.', true); return; }
+  state.paymentModal = null;
+  toast('Payment marked paid.');
+  render();
+}
+
+async function unmarkPaid() {
+  const transaction = state.store.transactions.find((item) => item.id === state.paymentModal?.id);
+  if (!transaction || !window.confirm(`Remove the paid date from ${transaction.description}?`)) return;
+  const updated = { ...transaction, paidDate: '', updatedAt: new Date().toISOString() };
+  state.store.transactions = state.store.transactions.map((item) => item.id === updated.id ? updated : item);
+  if (state.transactionDraft?.id === updated.id) state.transactionDraft.paidDate = '';
+  try { await persist(); } catch (error) { toast(error.message || 'Payment status could not be changed.', true); return; }
+  state.paymentModal = null;
+  toast('Payment marked unpaid.');
+  render();
 }
 
 async function saveCompany(form) {

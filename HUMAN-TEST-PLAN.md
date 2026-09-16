@@ -1,4 +1,4 @@
-# TaxMan 0.4.3 human release test
+# TaxMan 0.4.4 human release test
 
 ## What is ready
 
@@ -8,12 +8,13 @@
 - Direct camera capture and local ledger storage on Android.
 - Windows bill-photo reading that fills suggestions into the transaction form for review.
 - One-time paired Android phone capture over the same local Wi-Fi network.
+- Separate paid status and paid date for each transaction.
 
 Android data is stored on the Android device and does not synchronize with the Windows ledger. Windows OCR is local and only suggests fields; it does not create a transaction automatically. Android keeps the manual-entry photo workflow in this release.
 
 ## Windows test
 
-1. Double-click `dist/TaxMan-0.4.2-Setup.exe` on a Windows 10/11 x64 machine. Confirm Windows presents its normal permission prompt automatically, without using **Run as administrator**. Also launch `dist/TaxMan-0.4.2-Portable.exe` from a separate folder.
+1. Double-click `dist/TaxMan-0.4.4-Setup.exe` on a Windows 10/11 x64 machine. Confirm Windows presents its normal permission prompt automatically, without using **Run as administrator**. Also launch `dist/TaxMan-0.4.4-Portable.exe` from a separate folder.
 2. If upgrading from TaxMan 0.2.x, confirm the existing records appear immediately after launch. Create an expense with a date, company, category, description, amount, business-use percentage, and notes. Close and reopen TaxMan; confirm the row and totals remain.
 3. Open an expense and choose **Take with phone**. Put the PC and phone on the same Wi-Fi, scan the displayed QR code with the phone camera, allow camera/photo access, take a clear bill photo, and confirm the preview returns to TaxMan. Also verify the displayed address works when entered manually.
 4. Choose **Read bill details**. Confirm the date, company when it matches an existing company, description, amount, and category are suggestions in the form. Deliberately correct at least one field, then save and reopen the transaction.
@@ -22,6 +23,7 @@ Android data is stored on the Android device and does not synchronize with the W
 7. Export PDF, CSV, and JSON backup. Restore the JSON backup and confirm the transaction, company preference, and attached photo remain.
 8. Try an expired/closed phone-capture link and confirm it does not access the ledger.
 9. Choose **Take with phone**, choose **Pair phone once**, and confirm the PC window shows a QR code. On the Android app, choose **Pair with PC**, choose **Scan QR code**, allow camera access, and scan the PC code. Confirm the app pairs automatically and shows **Connected to your PC**. Repeat using manual address/code entry as a fallback. Start another capture from Windows and confirm the phone shows **Capture requested** without scanning a QR code. Take the photo and confirm it arrives in the open Windows transaction.
+10. Use **Mark paid** on a transaction. Confirm the payment window shows the company, description, amount, and bill date; save a paid date and confirm the ledger shows **Paid** with that date. Reopen the transaction, update the paid date, then mark it unpaid and confirm the status clears.
 
 ## Android test
 
@@ -45,4 +47,5 @@ For each failure, send: platform and OS version, device model, the exact step, w
 - A decision between sideloaded APK distribution and Google Play.
 - For Google Play: the developer account, final app listing text/screenshots, privacy-policy URL, and a release/upload keystore kept outside the repository.
 - At least one real Android phone for camera, permission, back-button, rotation, and persistence testing.
-- A decision on whether a future Android release should add local OCR to prefill bill fields; Android pairing in 0.4.2 still keeps the Windows review-and-save workflow authoritative.
+- A decision on whether a future Android release should add local OCR to prefill bill fields; Android pairing in 0.4.4 still keeps the Windows review-and-save workflow authoritative.
+- Confirm a bill showing both **Previous payment** and **Due date** suggests the due date, not the historical payment date. Compact formats such as 051726 should also be interpreted correctly when labeled.

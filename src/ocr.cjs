@@ -14,22 +14,61 @@ function validDate(year, month, day) {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` : '';
 }
 
-function extractDate(lines) {
-  for (const line of lines) {
-    const numeric = line.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b/);
-    if (numeric) {
-      const year = numeric[3].length === 2 ? 2000 + Number(numeric[3]) : Number(numeric[3]);
-      const result = validDate(year, Number(numeric[1]), Number(numeric[2]));
-      if (result) return result;
-    }
-    const named = line.match(/\b([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?[,]?\s+(\d{4})\b/);
-    if (named) {
-      const month = MONTHS.get(named[1].toLowerCase());
-      const result = month ? validDate(Number(named[3]), month, Number(named[2])) : '';
-      if (result) return result;
-    }
+function parseDateToken(token) {
+  const value = String(token || '').trim();
+  const numeric = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (numeric) {
+    const year = numeric[3].length === 2 ? 2000 + Number(numeric[3]) : Number(numeric[3]);
+    return validDate(year, Number(numeric[1]), Number(numeric[2]));
+  }
+  const named = value.match(/^([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?[,]?\s+(\d{4})$/);
+  if (named) {
+    const month = MONTHS.get(named[1].toLowerCase());
+    return month ? validDate(Number(named[3]), month, Number(named[2])) : '';
+  }
+  const compact = value.match(/^(\d{2})(\d{2})(\d{2}|\d{4})$/);
+  if (compact) {
+    const year = compact[3].length === 2 ? 2000 + Number(compact[3]) : Number(compact[3]);
+    return validDate(year, Number(compact[1]), Number(compact[2]));
   }
   return '';
+}
+
+function dateMatchesInLine(line, allowCompact = false) {
+  const matches = [];
+  for (const match of line.matchAll(/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/g)) matches.push({ token: match[0], index: match.index });
+  for (const match of line.matchAll(/\b[A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?[,]?\s+\d{4}\b/gi)) matches.push({ token: match[0], index: match.index });
+  if (allowCompact || /(?:due|date|payment|statement|invoice|bill)/i.test(line)) {
+    for (const match of line.matchAll(/\b\d{6,8}\b/g)) matches.push({ token: match[0], index: match.index });
+  }
+  return matches.map((match) => ({ ...match, date: parseDateToken(match.token) })).filter((match) => match.date);
+}
+
+function dateScore(line, index) {
+  const lower = line.toLowerCase();
+  const before = lower.slice(Math.max(0, index - 45), index);
+  const dueLabel = /due\s*date|payment\s+due|due\s+by|pay(?:ment)?\s+by/;
+  const priorPayment = /previous\s+payment|last\s+payment|prior\s+payment|payment\s+(?:received|posted|made)|paid\s+on/;
+  let score = 0;
+  if (dueLabel.test(before)) score += 1000;
+  else if (dueLabel.test(lower)) score += 500;
+  if (priorPayment.test(lower) && !dueLabel.test(before)) score -= 1000;
+  if (/statement\s+date|invoice\s+date|bill\s+date|issue\s+date|service\s+period|billing\s+period/.test(lower)) score -= 250;
+  return score;
+}
+
+function extractDate(lines) {
+  const dueContextLines = lines.map((line, index) => ({ line, index })).filter(({ line }) => /due\s*date|payment\s+due|due\s+by|pay(?:ment)?\s+by/i.test(line));
+  const candidates = lines.flatMap((line, lineIndex) => {
+    const dueNearby = dueContextLines.some(({ index }) => lineIndex > index && lineIndex <= index + 2);
+    return dateMatchesInLine(line, dueNearby).map((match) => ({ ...match, line, lineIndex, score: dateScore(line, match.index) }));
+  });
+  for (const { index } of dueContextLines) {
+    const nearby = candidates.filter((candidate) => candidate.lineIndex >= index && candidate.lineIndex <= index + 2 && candidate.score >= 500).sort((a, b) => a.lineIndex - b.lineIndex || a.index - b.index);
+    if (nearby[0]) return nearby[0].date;
+  }
+  const usable = candidates.filter((candidate) => candidate.score > -500);
+  return usable.sort((a, b) => b.score - a.score || a.lineIndex - b.lineIndex || a.index - b.index)[0]?.date || '';
 }
 
 function amountsIn(line) {

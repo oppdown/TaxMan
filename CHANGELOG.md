@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4 - 2026-09-16
+
+- Improved bill reading so labeled due dates take priority over previous-payment and other historical dates, including compact dates such as 051726.
+- Added payment tracking to every transaction with a separate paid date, a Mark paid action, a detail window, and the ability to mark a transaction unpaid again.
+- Preserved paid status through local saves, upgrades, backups, and restores.
+
 ## 0.4.3 - 2026-09-16
 
 - Added QR-based one-time pairing: the Windows pairing window now shows the connection QR code, and the Android companion scans it to pair automatically.

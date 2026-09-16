@@ -10,7 +10,7 @@ async function main() {
   await window.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
   const execution = window.webContents.executeJavaScript(`(async () => {
     const wait = () => new Promise((resolve) => setTimeout(resolve, 35));
-    const set = (id, value) => { const element = document.getElementById(id); element.value = value; element.dispatchEvent(new Event('input', { bubbles: true })); element.dispatchEvent(new Event('change', { bubbles: true })); };
+    const set = (id, value) => { const element = document.getElementById(id); if (!element) throw new Error('Missing field ' + id + '; title=' + document.getElementById('page-title')?.textContent + '; body=' + document.body.textContent.slice(0, 500)); element.value = value; element.dispatchEvent(new Event('input', { bubbles: true })); element.dispatchEvent(new Event('change', { bubbles: true })); };
     const submit = async (id) => { document.getElementById(id).dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait(); };
     const checks = {};
     checks.singleFevMenu = document.querySelectorAll('.menu-bar').length === 0;
@@ -40,6 +40,11 @@ async function main() {
     document.getElementById('transaction-amount').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await wait();
     checks.transactionSaves = document.querySelector('.data-table')?.textContent.includes('Smoke test expense');
+    document.querySelector('[data-action="mark-paid"]')?.click(); await wait();
+    checks.paymentModalShowsDetails = document.getElementById('payment-form')?.textContent.includes('Date paid') && document.body.textContent.includes('Smoke test expense');
+    set('paid-date', '091026');
+    document.getElementById('payment-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait();
+    checks.paymentStatusPersists = document.querySelector('.data-table')?.textContent.includes('Paid') && document.querySelector('.data-table')?.textContent.includes('09/10/2026');
     checks.compactDateSelectsYear = document.getElementById('year-select')?.value === '2026' && document.body.textContent.includes('09/08/2026');
 
     document.querySelector('[data-view="companies"]').click(); await wait();
@@ -61,7 +66,7 @@ async function main() {
 
     await window.taxLedger.testEmitMenuAction('show-about'); await wait();
     checks.helpMenuOpens = Boolean(document.querySelector('[aria-labelledby="about-title"]'));
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.3');
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.4');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
     await window.taxLedger.testEmitMenuAction('check-for-updates'); await wait();
     checks.checkForUpdatesAction = document.body.textContent.includes('Automatic updates are available in the installed Windows version of TaxMan.');

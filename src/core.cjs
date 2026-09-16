@@ -97,6 +97,7 @@ function normalizeStore(input) {
       amountCents: Number.isInteger(transaction.amountCents) ? transaction.amountCents : Math.round(Number(transaction.amount || 0) * 100),
       businessUsePercent: transaction.type === 'income' ? null : normalizePercent(transaction.businessUsePercent ?? 100),
       homeOfficeRelated: Boolean(transaction.homeOfficeRelated),
+      paidDate: cleanText(transaction.paidDate),
       notes: cleanText(transaction.notes),
       receiptImageData: isReceiptImageData(transaction.receiptImageData) ? transaction.receiptImageData : '',
       createdAt: cleanText(transaction.createdAt) || nowIso(),
@@ -129,6 +130,7 @@ function validateStore(store) {
     if (!categoryIds.has(transaction.categoryId)) errors.push(`Missing category for transaction ${transaction.id}.`);
     if (!Number.isInteger(transaction.amountCents) || transaction.amountCents <= 0) errors.push(`Invalid amount for transaction ${transaction.id}.`);
     if (transaction.type === 'expense' && (transaction.businessUsePercent < 0 || transaction.businessUsePercent > 100)) errors.push(`Invalid business-use percentage for transaction ${transaction.id}.`);
+    if (transaction.paidDate && !isValidIsoDate(transaction.paidDate)) errors.push(`Invalid paid date for transaction ${transaction.id}.`);
   }
   return errors;
 }
