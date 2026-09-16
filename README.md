@@ -2,7 +2,7 @@
 
 ![TaxMan icon](src/assets/taxman-icon.png)
 
-Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.0 adds reviewable on-device bill reading and reusable company home-office preferences while retaining the Android/mobile runtime.
+Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.1 adds reviewable on-device bill reading and reusable company home-office preferences while retaining the Android/mobile runtime.
 
 ## Use
 

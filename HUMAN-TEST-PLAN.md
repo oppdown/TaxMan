@@ -1,4 +1,4 @@
-# TaxMan 0.4.0 human release test
+# TaxMan 0.4.1 human release test
 
 ## What is ready
 
@@ -12,7 +12,7 @@ Android data is stored on the Android device and does not synchronize with the W
 
 ## Windows test
 
-1. Double-click `dist/TaxMan-0.4.0-Setup.exe` on a Windows 10/11 x64 machine. Confirm Windows presents its normal permission prompt automatically, without using **Run as administrator**. Also launch `dist/TaxMan-0.4.0-Portable.exe` from a separate folder.
+1. Double-click `dist/TaxMan-0.4.1-Setup.exe` on a Windows 10/11 x64 machine. Confirm Windows presents its normal permission prompt automatically, without using **Run as administrator**. Also launch `dist/TaxMan-0.4.1-Portable.exe` from a separate folder.
 2. If upgrading from TaxMan 0.2.x, confirm the existing records appear immediately after launch. Create an expense with a date, company, category, description, amount, business-use percentage, and notes. Close and reopen TaxMan; confirm the row and totals remain.
 3. Open an expense and choose **Take with phone**. Put the PC and phone on the same Wi-Fi, scan the displayed QR code with the phone camera, allow camera/photo access, take a clear bill photo, and confirm the preview returns to TaxMan. Also verify the displayed address works when entered manually.
 4. Choose **Read bill details**. Confirm the date, company when it matches an existing company, description, amount, and category are suggestions in the form. Deliberately correct at least one field, then save and reopen the transaction.

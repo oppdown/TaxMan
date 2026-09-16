@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 - 2026-09-16
+
+- Reissued the bill-capture and safer-upgrade release with the corrected application version shown consistently in the app, packages, documentation, and downloads.
+- Retained on-device bill-photo reading, review-before-save suggestions, reusable company home-office defaults, record migration, and automatic installer permission handling.
+
 ## 0.4.0 - 2026-09-16
 
 - Added on-device bill-photo reading for Windows. TaxMan suggests the date, company, description, amount, and category from the image without sending the bill to a cloud service.
