@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 - Unreleased
+## 0.3.0 - 2026-09-16
 
 - Added local phone capture for bill photos from an open transaction form.
 - Added a locally generated QR code to open the temporary phone-capture page without typing its address.
