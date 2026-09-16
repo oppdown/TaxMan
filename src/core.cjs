@@ -32,6 +32,8 @@ const DEFAULT_CATEGORIES = [
   { id: 'expense-other', type: 'expense', name: 'Other', active: true }
 ];
 
+const DEFAULT_WORK_TIME = { hoursPerDay: 8, daysPerWeek: 7 };
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -51,6 +53,7 @@ function createEmptyStore() {
     taxYear: TAX_YEAR,
     companies: DEFAULT_COMPANIES.map((company) => ({ ...company })),
     categories: DEFAULT_CATEGORIES.map((category) => ({ ...category })),
+    workTime: { ...DEFAULT_WORK_TIME },
     transactions: [],
     updatedAt: nowIso()
   };
@@ -58,6 +61,21 @@ function createEmptyStore() {
 
 function cleanText(value) {
   return String(value ?? '').trim();
+}
+
+function normalizeWorkTime(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const hoursPerDay = Number(source.hoursPerDay);
+  const daysPerWeek = Number(source.daysPerWeek);
+  return {
+    hoursPerDay: Number.isFinite(hoursPerDay) ? Math.round(Math.max(0, Math.min(24, hoursPerDay)) * 100) / 100 : DEFAULT_WORK_TIME.hoursPerDay,
+    daysPerWeek: Number.isFinite(daysPerWeek) ? Math.round(Math.max(0, Math.min(7, daysPerWeek)) * 100) / 100 : DEFAULT_WORK_TIME.daysPerWeek
+  };
+}
+
+function calculateTimeBusinessUsePercent(workTime = DEFAULT_WORK_TIME) {
+  const normalized = normalizeWorkTime(workTime);
+  return Math.round((normalized.hoursPerDay * normalized.daysPerWeek / (24 * 7)) * 10000) / 100;
 }
 
 function normalizeStore(input) {
@@ -86,6 +104,7 @@ function normalizeStore(input) {
       name: cleanText(category.name),
       active: category.active !== false
     })),
+    workTime: normalizeWorkTime(source.workTime || base.workTime),
     transactions: transactions.map((transaction) => ({
       id: cleanText(transaction.id) || id('transaction'),
       taxYear: isValidIsoDate(cleanText(transaction.date)) ? yearFromDate(cleanText(transaction.date)) : (Number.isInteger(transaction.taxYear) ? transaction.taxYear : TAX_YEAR),
@@ -120,6 +139,7 @@ function normalizePercent(value) {
 function validateStore(store) {
   const errors = [];
   if (!store || !Number.isInteger(store.taxYear) || store.taxYear < 1900 || store.taxYear > 2100) errors.push('Store tax year must be between 1900 and 2100.');
+  if (!store?.workTime || !Number.isFinite(store.workTime.hoursPerDay) || store.workTime.hoursPerDay < 0 || store.workTime.hoursPerDay > 24 || !Number.isFinite(store.workTime.daysPerWeek) || store.workTime.daysPerWeek < 0 || store.workTime.daysPerWeek > 7) errors.push('Work-time settings must be between 0 and 24 hours per day and 0 and 7 days per week.');
   const companyIds = new Set((store.companies || []).map((company) => company.id));
   const categoryIds = new Set((store.categories || []).map((category) => category.id));
   for (const transaction of store.transactions || []) {
@@ -264,4 +284,4 @@ function serializeCsv(store, year = store.taxYear) {
   return [headers, ...rows].map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n') + '\r\n';
 }
 
-module.exports = { TAX_YEAR, DEFAULT_COMPANIES, DEFAULT_CATEGORIES, createEmptyStore, normalizeStore, validateStore, isValidIsoDate, isValidTaxDate, normalizePercent, businessAmountCents, calculateSummary, formatCurrency, formatPercent, escapeHtml, buildReportHtml, serializeCsv, isReceiptImageData };
+module.exports = { TAX_YEAR, DEFAULT_COMPANIES, DEFAULT_CATEGORIES, DEFAULT_WORK_TIME, createEmptyStore, normalizeStore, normalizeWorkTime, calculateTimeBusinessUsePercent, validateStore, isValidIsoDate, isValidTaxDate, normalizePercent, businessAmountCents, calculateSummary, formatCurrency, formatPercent, escapeHtml, buildReportHtml, serializeCsv, isReceiptImageData };

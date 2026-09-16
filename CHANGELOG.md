@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.5 - 2026-09-16
+
+- Added a time-based business-use calculator for shared utilities: enter average work hours per day and work days per week, then apply the calculated percentage to the transaction.
+- Uses 56 of 168 weekly hours for an 8-hours-per-day, 7-days-per-week schedule, displaying 33.33% (about 33%) and the estimated amount for the current bill.
+- Improved OCR company/source handling so known companies are selected automatically, plausible unknown vendors are offered for review, and noisy lines such as `he YR Fd 9 RE` are not promoted into the description.
+- Saved the work-time settings locally and preserved them through older-store normalization and mobile storage.
+
 ## 0.4.4 - 2026-09-16
 
 - Improved bill reading so labeled due dates take priority over previous-payment and other historical dates, including compact dates such as 051726.

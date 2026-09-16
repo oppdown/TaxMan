@@ -18,10 +18,12 @@ if (!window.taxLedger) {
     ['expense-insurance', 'expense', 'Insurance'], ['expense-banking-costs', 'expense', 'Banking Costs'], ['expense-travel-vehicle', 'expense', 'Travel / Vehicle'],
     ['expense-home-office', 'expense', 'Home Office'], ['expense-other', 'expense', 'Other']
   ];
+  const DEFAULT_WORK_TIME = { hoursPerDay: 8, daysPerWeek: 7 };
 
   function emptyStore() {
-    return { schemaVersion: 1, taxYear: 2025, companies: DEFAULT_COMPANIES.map(([id, name, classification]) => ({ id, name, classification, phone: '', email: '', website: '', notes: '' })), categories: DEFAULT_CATEGORIES.map(([id, type, name]) => ({ id, type, name, active: true })), transactions: [], updatedAt: new Date().toISOString() };
+    return { schemaVersion: 1, taxYear: 2025, companies: DEFAULT_COMPANIES.map(([id, name, classification]) => ({ id, name, classification, phone: '', email: '', website: '', notes: '' })), categories: DEFAULT_CATEGORIES.map(([id, type, name]) => ({ id, type, name, active: true })), workTime: { ...DEFAULT_WORK_TIME }, transactions: [], updatedAt: new Date().toISOString() };
   }
+  function normalizeWorkTime(value) { const source = value && typeof value === 'object' ? value : {}; const hoursPerDay = Number(source.hoursPerDay); const daysPerWeek = Number(source.daysPerWeek); return { hoursPerDay: Number.isFinite(hoursPerDay) ? Math.round(Math.max(0, Math.min(24, hoursPerDay)) * 100) / 100 : DEFAULT_WORK_TIME.hoursPerDay, daysPerWeek: Number.isFinite(daysPerWeek) ? Math.round(Math.max(0, Math.min(7, daysPerWeek)) * 100) / 100 : DEFAULT_WORK_TIME.daysPerWeek }; }
   function normalizeStore(input) {
     const base = emptyStore();
     const source = input && typeof input === 'object' ? input : {};
@@ -30,6 +32,7 @@ if (!window.taxLedger) {
       taxYear: Number.isInteger(source.taxYear) ? source.taxYear : base.taxYear,
       companies: Array.isArray(source.companies) ? source.companies.map((item) => ({ id: String(item.id || cryptoId('company')), name: String(item.name || '').trim(), classification: String(item.classification || 'Other'), phone: String(item.phone || ''), email: String(item.email || ''), website: String(item.website || ''), notes: String(item.notes || ''), alwaysHomeOfficeRelated: Boolean(item.alwaysHomeOfficeRelated) })) : base.companies,
       categories: Array.isArray(source.categories) ? source.categories.map((item) => ({ id: String(item.id || cryptoId('category')), type: item.type === 'income' ? 'income' : 'expense', name: String(item.name || '').trim(), active: item.active !== false })) : base.categories,
+      workTime: normalizeWorkTime(source.workTime || base.workTime),
       transactions: Array.isArray(source.transactions) ? source.transactions.map((item) => ({ ...item, paidDate: typeof item.paidDate === 'string' ? item.paidDate : '', receiptImageData: typeof item.receiptImageData === 'string' ? item.receiptImageData : '' })) : [],
       updatedAt: new Date().toISOString()
     };
@@ -99,7 +102,7 @@ if (!window.taxLedger) {
     exportPdf: async () => { window.print(); return { canceled: true }; },
     openFolder: async () => {},
     checkForUpdates: async () => { window.open('https://taxman.speedy-star-8288.chatgpt.site/download.html', '_blank'); },
-    getVersion: async () => '0.4.4',
+    getVersion: async () => '0.4.5',
     startPhoneCapture: async () => ({ direct: true }),
     stopPhoneCapture: async () => {},
     getPairedComputer: async () => loadPairedComputer(),

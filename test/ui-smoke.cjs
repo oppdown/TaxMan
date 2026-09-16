@@ -36,7 +36,7 @@ async function main() {
     set('transaction-description', 'Smoke test expense');
     set('transaction-amount', '12.50');
     document.getElementById('home-office-related').click();
-    checks.homeOfficeDefaultsTo33 = document.getElementById('business-use')?.value === '33';
+    checks.homeOfficeDefaultsTo33 = document.getElementById('business-use')?.value === '33.33';
     document.getElementById('transaction-amount').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await wait();
     checks.transactionSaves = document.querySelector('.data-table')?.textContent.includes('Smoke test expense');
@@ -46,6 +46,13 @@ async function main() {
     document.getElementById('payment-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait();
     checks.paymentStatusPersists = document.querySelector('.data-table')?.textContent.includes('Paid') && document.querySelector('.data-table')?.textContent.includes('09/10/2026');
     checks.compactDateSelectsYear = document.getElementById('year-select')?.value === '2026' && document.body.textContent.includes('09/08/2026');
+    document.querySelector('[data-action="edit-transaction"]')?.click(); await wait();
+    document.querySelector('[data-action="calculate-business-use"]')?.click(); await wait();
+    checks.workUseCalculatorOpens = document.getElementById('work-use-form')?.textContent.includes('Calculated business use');
+    checks.workUseCalculatorShows33 = document.getElementById('work-use-percent')?.textContent.includes('33.33%');
+    document.getElementById('work-use-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait();
+    checks.workUseApplied = document.getElementById('business-use')?.value === '33.33';
+    document.querySelector('[data-action="cancel-form"]')?.click(); await wait();
 
     document.querySelector('[data-view="companies"]').click(); await wait();
     const companyRow = [...document.querySelectorAll('tbody tr')].find((row) => row.textContent.includes('Smoke Company'));
@@ -61,12 +68,12 @@ async function main() {
     const smokeCompanyOption = [...document.querySelectorAll('#transaction-company option')].find((option) => option.textContent.includes('Smoke Company Updated'));
     document.getElementById('transaction-company').value = smokeCompanyOption.value;
     document.getElementById('transaction-company').dispatchEvent(new Event('change', { bubbles: true })); await wait();
-    checks.companyHomeOfficeDefaultsNewExpense = document.getElementById('home-office-related')?.checked === true && document.getElementById('business-use')?.value === '33';
+    checks.companyHomeOfficeDefaultsNewExpense = document.getElementById('home-office-related')?.checked === true && document.getElementById('business-use')?.value === '33.33';
     document.querySelector('[data-action="cancel-form"]').click(); await wait();
 
     await window.taxLedger.testEmitMenuAction('show-about'); await wait();
     checks.helpMenuOpens = Boolean(document.querySelector('[aria-labelledby="about-title"]'));
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.4');
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.5');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
     await window.taxLedger.testEmitMenuAction('check-for-updates'); await wait();
     checks.checkForUpdatesAction = document.body.textContent.includes('Automatic updates are available in the installed Windows version of TaxMan.');

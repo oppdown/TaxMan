@@ -38,3 +38,10 @@ test('bill OCR does not use a previous payment as the bill date when no due date
   const result = extractBillFields('Electric Provider\n041726 Previous payment\nAmount Due $42.00');
   assert.equal(result.date, '');
 });
+
+test('bill OCR does not promote noisy numeric text into the company or description', () => {
+  const result = extractBillFields('he YR Fd 9 RE\nAmount Due $42.00');
+  assert.equal(result.vendor, '');
+  assert.equal(result.companyId, '');
+  assert.equal(result.description, '');
+});

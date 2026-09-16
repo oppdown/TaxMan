@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createEmptyStore, normalizeStore, validateStore, calculateSummary, businessAmountCents, serializeCsv, buildReportHtml, isReceiptImageData } = require('../src/core.cjs');
+const { createEmptyStore, normalizeStore, validateStore, calculateSummary, businessAmountCents, calculateTimeBusinessUsePercent, serializeCsv, buildReportHtml, isReceiptImageData } = require('../src/core.cjs');
 
 function sampleStore() {
   const store = createEmptyStore();
@@ -20,10 +20,17 @@ function sampleStore() {
 test('empty store is a valid 2025 ledger', () => {
   const store = createEmptyStore();
   assert.equal(store.taxYear, 2025);
+  assert.deepEqual(store.workTime, { hoursPerDay: 8, daysPerWeek: 7 });
   assert.ok(store.companies.some((company) => company.name === 'Hart EMC'));
   assert.ok(store.companies.some((company) => company.name === 'theITSupportCenter'));
   assert.ok(store.categories.some((category) => category.name === 'Banking Costs'));
   assert.deepEqual(validateStore(store), []);
+});
+
+test('time-based business use calculates 33.33% for eight hours across seven days', () => {
+  assert.equal(calculateTimeBusinessUsePercent({ hoursPerDay: 8, daysPerWeek: 7 }), 33.33);
+  assert.equal(calculateTimeBusinessUsePercent({ hoursPerDay: 4, daysPerWeek: 5 }), 11.9);
+  assert.deepEqual(normalizeStore({ workTime: { hoursPerDay: 9, daysPerWeek: 6 } }).workTime, { hoursPerDay: 9, daysPerWeek: 6 });
 });
 
 test('company home-office preference survives normalization', () => {

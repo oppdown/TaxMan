@@ -2,7 +2,7 @@
 
 ![TaxMan icon](src/assets/taxman-icon.png)
 
-Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.4 adds smarter due-date reading and payment tracking while retaining QR-based one-time Android pairing and local-first records.
+Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.5 adds a time-based business-use calculator and safer OCR company/source suggestions while retaining smarter due-date reading, payment tracking, QR-based one-time Android pairing, and local-first records.
 
 ## Use
 

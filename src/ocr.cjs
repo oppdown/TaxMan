@@ -92,7 +92,17 @@ function extractVendor(lines, companies = []) {
   });
   if (companyMatch) return { vendor: companyMatch.name, companyId: companyMatch.id };
   const ignored = /total|invoice|receipt|statement|account|customer|address|phone|date|amount|due|www\.|https?:|\d{3,}/i;
-  const vendor = lines.find((line) => line.length >= 2 && line.length <= 80 && !ignored.test(line) && /[A-Za-z]{2}/.test(line));
+  const likelyVendor = (line) => {
+    const value = String(line || '').trim();
+    const words = value.split(/\s+/).filter(Boolean);
+    const letters = (value.match(/[A-Za-z]/g) || []).length;
+    const digitWords = words.filter((word) => /^\d+$/.test(word));
+    if (value.length < 2 || value.length > 80 || ignored.test(value) || !/[A-Za-z]{2}/.test(value)) return false;
+    if (digitWords.length || /^\d+\s/.test(value)) return false;
+    if (letters < 3 || words.length > 10) return false;
+    return true;
+  };
+  const vendor = lines.find(likelyVendor) || '';
   return { vendor: vendor || '', companyId: '' };
 }
 
