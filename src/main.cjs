@@ -17,7 +17,7 @@ const { createWorker } = require('tesseract.js');
 const DATA_FILE = 'data.json';
 const BACKUP_FILE = 'data.backup.json';
 const PAIRING_FILE = 'paired-phone.json';
-const PHONE_SERVER_PORT = 38741;
+const PHONE_SERVER_PORT = Number(process.env.TAXMAN_PHONE_PORT) || 38741;
 const STABLE_USER_DATA_DIRECTORY = 'TaxMan';
 const LEGACY_USER_DATA_DIRECTORIES = ['tax-ledger-2025'];
 let mainWindow;

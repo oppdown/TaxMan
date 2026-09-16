@@ -15,9 +15,11 @@ async function main() {
     const companionSurface = Boolean(document.querySelector('.companion-page'));
     document.querySelector('[data-action="pair-computer"]')?.click(); await wait();
     const pairingForm = Boolean(document.getElementById('pair-computer-form'));
+    const qrScanButton = Boolean(document.querySelector('[data-action="scan-pairing-qr"]'));
+    const qrDecoderLoaded = typeof window.jsQR === 'function';
     document.querySelector('[data-action="cancel-companion-pairing"]')?.click(); await wait();
     document.getElementById('quick-add').click(); await wait();
-    const mobileControls = { companionSurface, pairingForm, form: Boolean(document.getElementById('transaction-form')), directCameraButton: Boolean(document.querySelector('[data-action="take-receipt-photo"]')), cameraInput: document.getElementById('receipt-photo')?.accept === 'image/*' };
+    const mobileControls = { companionSurface, pairingForm, qrScanButton, qrDecoderLoaded, form: Boolean(document.getElementById('transaction-form')), directCameraButton: Boolean(document.querySelector('[data-action="take-receipt-photo"]')), cameraInput: document.getElementById('receipt-photo')?.accept === 'image/*' };
     set('transaction-company', 'company-hart-emc'); set('transaction-category', 'expense-utilities'); set('transaction-date', '090826'); set('transaction-description', 'Mobile smoke bill'); set('transaction-amount', '18.25');
     document.getElementById('transaction-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait();
     return { ...mobileControls, saved: document.body.textContent.includes('Mobile smoke bill'), localStore: Boolean(localStorage.getItem('taxman.local-store.v1')) };
@@ -25,6 +27,8 @@ async function main() {
   assert.equal(result.form, true);
   assert.equal(result.companionSurface, true);
   assert.equal(result.pairingForm, true);
+  assert.equal(result.qrScanButton, true);
+  assert.equal(result.qrDecoderLoaded, true);
   assert.equal(result.directCameraButton, true);
   assert.equal(result.cameraInput, true);
   assert.equal(result.saved, true);

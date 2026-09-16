@@ -2,7 +2,7 @@
 
 ![TaxMan icon](src/assets/taxman-icon.png)
 
-Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.2 adds a paired Android phone companion with a polished capture center while retaining reviewable on-device bill reading and local-first records.
+Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.3 adds QR-based one-time pairing for the Android phone companion while retaining reviewable on-device bill reading and local-first records.
 
 ## Use
 
@@ -12,13 +12,13 @@ Local-first ledger for preparing income and expenditure records for a tax prepar
 4. Review totals on the Dashboard and use Reports & Backup to export the selected-year PDF/CSV or a full JSON backup.
 5. Use Help > Keyboard shortcuts for faster entry. The Companies & Sources page includes a guarded Clear company data control for setup cleanup.
 
-On Android, TaxMan runs as a local-only app with the same transaction workflow, device camera access, JSON backup, and CSV export. Its capture center can pair with a Windows TaxMan PC once, then receive bill-photo requests without another QR scan. Android data is stored on that device; it is not synchronized with the Windows computer.
+On Android, TaxMan runs as a local-only app with the same transaction workflow, device camera access, JSON backup, and CSV export. Its capture center can scan the QR code shown by a Windows TaxMan PC, pair once automatically, then receive bill-photo requests without another QR scan. Android data is stored on that device; it is not synchronized with the Windows computer.
 
 The app stores records locally on the computer. It does not connect to a cloud service or submit tax forms. The report is a recordkeeping aid; final tax treatment must be confirmed by the tax preparer.
 
 Bill reading runs on the Windows device after the photo is attached. It suggests fields for review; OCR can misread dates, vendors, or amounts, so verify every field before saving. Android currently keeps the photo-and-manual-entry workflow while its local OCR package is prepared.
 
-Phone capture uses the same local Wi-Fi network as the computer. TaxMan shows a locally generated QR code for the temporary capture page, with the address available as a fallback. The link expires after a short time, and the photo is compressed on the phone before being sent directly to TaxMan. The app does not perform automatic tax decisions or silently create a transaction from the image; verify the bill details in the form before saving.
+Phone capture uses the same local Wi-Fi network as the computer. TaxMan shows a locally generated QR code for one-time pairing and for the temporary capture page, with manual address entry available as a fallback. Pairing uses a short-lived code and remembered local token; the link expires after a short time, and the photo is compressed on the phone before being sent directly to TaxMan. The app does not perform automatic tax decisions or silently create a transaction from the image; verify the bill details in the form before saving.
 
 Installed Windows builds can use Help > Check for Updates to check for a newer TaxMan release, download it only after confirmation, and ask before restarting to install it. Windows installers request elevation automatically when needed, so users can start setup with a normal double-click. Development builds keep the update action disabled until installed.
 

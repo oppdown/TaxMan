@@ -1,4 +1,4 @@
-# TaxMan 0.4.2 human release test
+# TaxMan 0.4.3 human release test
 
 ## What is ready
 
@@ -21,7 +21,7 @@ Android data is stored on the Android device and does not synchronize with the W
 6. Save the transaction, reopen it, and confirm the photo is still present. Remove the photo and save again; confirm it is gone.
 7. Export PDF, CSV, and JSON backup. Restore the JSON backup and confirm the transaction, company preference, and attached photo remain.
 8. Try an expired/closed phone-capture link and confirm it does not access the ledger.
-9. Choose **Take with phone**, choose **Pair phone once**, and note the PC address and one-time code. On the Android app, choose **Pair with PC**, enter the address/code, and confirm the app shows **Connected to your PC**. Start another capture from Windows and confirm the phone shows **Capture requested** without scanning a QR code. Take the photo and confirm it arrives in the open Windows transaction.
+9. Choose **Take with phone**, choose **Pair phone once**, and confirm the PC window shows a QR code. On the Android app, choose **Pair with PC**, choose **Scan QR code**, allow camera access, and scan the PC code. Confirm the app pairs automatically and shows **Connected to your PC**. Repeat using manual address/code entry as a fallback. Start another capture from Windows and confirm the phone shows **Capture requested** without scanning a QR code. Take the photo and confirm it arrives in the open Windows transaction.
 
 ## Android test
 

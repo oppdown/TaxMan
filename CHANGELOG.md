@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3 - 2026-09-16
+
+- Added QR-based one-time pairing: the Windows pairing window now shows the connection QR code, and the Android companion scans it to pair automatically.
+- Kept manual PC address and pairing-code entry as a fallback, with camera permission and invalid-code guidance.
+- Bundled the QR decoder into the Android/mobile build so pairing remains local and does not require a third-party account or service.
+
 ## 0.4.2 - 2026-09-16
 
 - Added a paired Android phone companion with a polished TaxMan capture center that matches the desktop theme.

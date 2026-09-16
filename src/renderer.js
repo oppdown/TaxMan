@@ -2,9 +2,11 @@
 
 const TAX_YEAR = 2025;
 const NEW_COMPANY = '__create__';
-const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, phoneCapture: null, phonePairing: null, companionPairing: false, companionComputer: null, companionRequest: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, appVersion: '0.4.2', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
+const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, appVersion: '0.4.3', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
 let companionPollTimer;
 let pairingPollTimer;
+let qrScannerStream;
+let qrScannerFrame;
 
 document.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
@@ -73,7 +75,7 @@ function bindEvents() {
     if (event.ctrlKey && event.key.toLowerCase() === 'n') { event.preventDefault(); openTransaction('expense'); }
     else if (event.ctrlKey && event.key.toLowerCase() === 's' && state.transactionDraft) { event.preventDefault(); document.getElementById('transaction-form')?.requestSubmit(); }
     else if (event.ctrlKey && /^[1-4]$/.test(event.key)) { event.preventDefault(); state.view = ['dashboard', 'transactions', 'companies', 'reports'][Number(event.key) - 1]; state.transactionDraft = null; render(); }
-    else if (event.key === 'Escape') { if (state.companyModal || state.phoneCapture || state.phonePairing || state.companionPairing || state.aboutOpen || state.shortcutsOpen) { if (state.phoneCapture) window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.phonePairing = null; state.companionPairing = false; state.aboutOpen = false; state.shortcutsOpen = false; render(); } else if (state.transactionDraft) { state.transactionDraft = null; render(); } else if (state.openMenu) { state.openMenu = null; render(); } }
+    else if (event.key === 'Escape') { if (state.qrScanner || state.companyModal || state.phoneCapture || state.phonePairing || state.companionPairing || state.aboutOpen || state.shortcutsOpen) { if (state.qrScanner) stopQrScanner(); if (state.phoneCapture) window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.phonePairing = null; state.companionPairing = false; state.companionPairingData = null; state.qrScanner = false; state.aboutOpen = false; state.shortcutsOpen = false; render(); } else if (state.transactionDraft) { state.transactionDraft = null; render(); } else if (state.openMenu) { state.openMenu = null; render(); } }
   });
 }
 
@@ -86,12 +88,14 @@ async function handleAction(action, element) {
   if (action === 'delete-transaction') await deleteTransaction(element.dataset.id);
   if (action === 'add-company') { state.companyModal = { editId: null, returnToTransaction: false }; render(); }
   if (action === 'edit-company') { state.companyModal = { editId: element.dataset.id, returnToTransaction: false }; render(); }
-  if (action === 'close-modal') { if (state.phoneCapture) await window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.phonePairing = null; state.companionPairing = false; state.aboutOpen = false; state.shortcutsOpen = false; render(); }
+  if (action === 'close-modal') { if (state.qrScanner) stopQrScanner(); if (state.phoneCapture) await window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.phonePairing = null; state.companionPairing = false; state.companionPairingData = null; state.qrScanner = false; state.aboutOpen = false; state.shortcutsOpen = false; render(); }
   if (action === 'start-phone-capture') await beginPhoneCapture();
   if (action === 'pair-phone') await beginPhonePairing();
   if (action === 'unpair-phone') { await window.taxLedger.unpairPhone(); state.phoneCapture = null; toast('Phone pairing removed.'); render(); }
-  if (action === 'pair-computer') { state.companionPairing = true; render(); }
-  if (action === 'cancel-companion-pairing') { state.companionPairing = false; render(); }
+  if (action === 'pair-computer') { state.companionPairing = true; state.companionPairingData = null; render(); }
+  if (action === 'scan-pairing-qr') await openPairingQrScanner();
+  if (action === 'close-qr-scanner') { stopQrScanner(); state.qrScanner = false; render(); }
+  if (action === 'cancel-companion-pairing') { stopQrScanner(); state.qrScanner = false; state.companionPairing = false; state.companionPairingData = null; render(); }
   if (action === 'unpair-computer') { await window.taxLedger.unpairComputer(); state.companionComputer = null; state.companionRequest = null; toast('PC pairing removed.'); render(); }
   if (action === 'companion-take-photo') document.getElementById('companion-photo')?.click();
   if (action === 'read-bill-photo') await readBillPhoto();
@@ -125,7 +129,7 @@ function render() {
   document.getElementById('year-eyebrow').textContent = `${state.selectedYear} tax preparation`;
   populateYearSelector();
   document.getElementById('view-root').innerHTML = window.taxLedger.isMobileCompanion && state.view === 'dashboard' ? renderCompanionDashboard() : state.view === 'dashboard' ? renderDashboard() : state.view === 'transactions' ? renderTransactions() : state.view === 'companies' ? renderCompanies() : renderReports();
-  document.getElementById('modal-root').innerHTML = state.companyModal ? renderCompanyModal() : state.phonePairing ? renderPhonePairingModal() : state.companionPairing ? renderCompanionPairingModal() : state.phoneCapture ? renderPhoneCaptureModal() : state.aboutOpen ? renderAboutModal() : state.shortcutsOpen ? renderShortcutsModal() : '';
+  document.getElementById('modal-root').innerHTML = state.companyModal ? renderCompanyModal() : state.phonePairing ? renderPhonePairingModal() : state.qrScanner ? renderQrScannerModal() : state.companionPairing ? renderCompanionPairingModal() : state.phoneCapture ? renderPhoneCaptureModal() : state.aboutOpen ? renderAboutModal() : state.shortcutsOpen ? renderShortcutsModal() : '';
 }
 
 function navigateTo(view) {
@@ -245,11 +249,17 @@ function renderCompanyModal() {
 
 function renderPhonePairingModal() {
   const expires = new Date(state.phonePairing.expiresAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  return `<div class="modal-backdrop"><section class="modal pairing-modal" role="dialog" aria-modal="true" aria-labelledby="pairing-title"><div class="modal-header"><div><span class="eyebrow">One-time setup</span><h2 id="pairing-title">Pair a phone with TaxMan</h2></div><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><div class="pairing-code-card"><span>PAIRING CODE</span><strong>${escapeHtml(state.phonePairing.code)}</strong><small>Expires at ${escapeHtml(expires)}</small></div><div class="notice"><strong>On the phone:</strong> open the TaxMan app, choose <strong>Pair with PC</strong>, and enter the PC address and this code. After pairing, the phone will remember this computer.</div><div class="field" style="margin-top:18px"><label for="pairing-address">PC address</label><input id="pairing-address" readonly value="${escapeAttr(pairingAddress(state.phonePairing.url))}"><small>Use the full address shown below if the phone needs it.</small></div><div class="phone-url-row" style="margin-top:8px"><input id="pairing-url" readonly value="${escapeAttr(state.phonePairing.url)}"><button type="button" class="secondary-button" data-action="copy-pairing-url">Copy</button></div><div class="modal-actions"><button type="button" class="secondary-button" data-action="close-modal">Done</button></div></div></section></div>`;
+  const qrCode = state.phonePairing.qrDataUrl ? `<div class="phone-qr pairing-qr"><img src="${escapeAttr(state.phonePairing.qrDataUrl)}" alt="QR code for pairing your phone with TaxMan"><p>Scan with TaxMan</p></div>` : '';
+  return `<div class="modal-backdrop"><section class="modal pairing-modal" role="dialog" aria-modal="true" aria-labelledby="pairing-title"><div class="modal-header"><div><span class="eyebrow">One-time setup</span><h2 id="pairing-title">Pair a phone with TaxMan</h2></div><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><div class="pairing-qr-layout">${qrCode}<div class="pairing-qr-copy"><strong>Scan to connect automatically</strong><p>Open TaxMan on your phone, choose <strong>Pair with PC</strong>, then scan this code. The address and one-time code will be entered for you.</p><p class="muted">Both devices must be on the same Wi-Fi network.</p></div></div><div class="pairing-code-card"><span>PAIRING CODE · MANUAL FALLBACK</span><strong>${escapeHtml(state.phonePairing.code)}</strong><small>Expires at ${escapeHtml(expires)}</small></div><div class="field"><label for="pairing-address">PC address</label><input id="pairing-address" readonly value="${escapeAttr(pairingAddress(state.phonePairing.url))}"><small>Use this address and the code above if scanning is not convenient.</small></div><div class="phone-url-row" style="margin-top:8px"><input id="pairing-url" readonly value="${escapeAttr(state.phonePairing.url)}"><button type="button" class="secondary-button" data-action="copy-pairing-url">Copy</button></div><div class="modal-actions"><button type="button" class="secondary-button" data-action="close-modal">Done</button></div></div></section></div>`;
 }
 
 function renderCompanionPairingModal() {
-  return `<div class="modal-backdrop"><section class="modal companion-pairing-modal" role="dialog" aria-modal="true" aria-labelledby="companion-pair-title"><div class="modal-header"><div><span class="eyebrow">One-time setup</span><h2 id="companion-pair-title">Pair with your TaxMan PC</h2></div><button class="close-button" data-action="cancel-companion-pairing" aria-label="Close">×</button></div><div class="modal-body"><div class="pairing-intro"><div class="pairing-shield">⌁</div><div><strong>Private phone companion</strong><p>Use the address and six-digit code shown in TaxMan on your PC. You only do this once.</p></div></div><form id="pair-computer-form"><div class="field"><label class="required" for="companion-base-url">PC address</label><input id="companion-base-url" name="baseUrl" required inputmode="url" placeholder="http://192.168.1.12:38741"><small>Both devices must be on the same Wi-Fi.</small></div><div class="field" style="margin-top:14px"><label class="required" for="companion-code">One-time pairing code</label><input id="companion-code" name="code" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456"></div><div class="field" style="margin-top:14px"><label for="companion-device-name">Phone name</label><input id="companion-device-name" name="deviceName" maxlength="80" value="My Android phone" placeholder="e.g. Phill’s phone"></div><div class="modal-actions"><button type="button" class="secondary-button" data-action="cancel-companion-pairing">Cancel</button><button type="submit" class="primary-button">Pair securely</button></div></form></div></section></div>`;
+  const pairing = state.companionPairingData || {};
+  return `<div class="modal-backdrop"><section class="modal companion-pairing-modal" role="dialog" aria-modal="true" aria-labelledby="companion-pair-title"><div class="modal-header"><div><span class="eyebrow">One-time setup</span><h2 id="companion-pair-title">Pair with your TaxMan PC</h2></div><button class="close-button" data-action="cancel-companion-pairing" aria-label="Close">×</button></div><div class="modal-body"><div class="pairing-intro"><div class="pairing-shield">⌁</div><div><strong>Private phone companion</strong><p>Scan the QR code shown in TaxMan on your PC to fill this in automatically.</p></div></div><button type="button" class="primary-button pairing-scan-button" data-action="scan-pairing-qr">▣ &nbsp; Scan QR code</button><div class="pairing-divider"><span>or enter manually</span></div><form id="pair-computer-form"><div class="field"><label class="required" for="companion-base-url">PC address</label><input id="companion-base-url" name="baseUrl" required inputmode="url" placeholder="http://192.168.1.12:38741" value="${escapeAttr(pairing.baseUrl || '')}"><small>Both devices must be on the same Wi-Fi.</small></div><div class="field" style="margin-top:14px"><label class="required" for="companion-code">One-time pairing code</label><input id="companion-code" name="code" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456" value="${escapeAttr(pairing.code || '')}"></div><div class="field" style="margin-top:14px"><label for="companion-device-name">Phone name</label><input id="companion-device-name" name="deviceName" maxlength="80" value="My Android phone" placeholder="e.g. Phill’s phone"></div><div class="modal-actions"><button type="button" class="secondary-button" data-action="cancel-companion-pairing">Cancel</button><button type="submit" class="primary-button">Pair securely</button></div></form></div></section></div>`;
+}
+
+function renderQrScannerModal() {
+  return `<div class="modal-backdrop"><section class="modal qr-scanner-modal" role="dialog" aria-modal="true" aria-labelledby="qr-scanner-title"><div class="modal-header"><div><span class="eyebrow">Automatic setup</span><h2 id="qr-scanner-title">Scan the TaxMan code</h2></div><button class="close-button" data-action="close-qr-scanner" aria-label="Close">×</button></div><div class="modal-body"><div class="qr-scanner-frame"><video id="pairing-qr-video" autoplay muted playsinline></video><div class="qr-scanner-target" aria-hidden="true"></div></div><p class="qr-scanner-status">${escapeHtml(state.qrScannerMessage || 'Point your camera at the QR code shown on your PC.')}</p><div class="notice">The phone will connect directly to your PC over Wi-Fi. The code is one-time and expires shortly.</div><div class="modal-actions"><button type="button" class="secondary-button" data-action="close-qr-scanner">Enter details manually</button></div></div></section></div>`;
 }
 
 function renderPhoneCaptureModal() {
@@ -276,14 +286,72 @@ function stopPairingWatch() { if (pairingPollTimer) { clearInterval(pairingPollT
 
 function pairingAddress(url) { try { const parsed = new URL(url); return `${parsed.protocol}//${parsed.host}`; } catch { return ''; } }
 
-async function pairComputer(form) {
-  try { const paired = await window.taxLedger.pairWithComputer(form.get('baseUrl'), form.get('code'), form.get('deviceName')); state.companionComputer = paired; state.companionPairing = false; toast(`Connected to ${paired.computerName || 'TaxMan on your PC'}.`); startCompanionPolling(); render(); }
+function pairComputer(form) { return pairComputerValues(form.get('baseUrl'), form.get('code'), form.get('deviceName')); }
+
+async function pairComputerValues(baseUrl, code, deviceName) {
+  try { const paired = await window.taxLedger.pairWithComputer(baseUrl, code, deviceName); state.companionComputer = paired; state.companionPairing = false; state.companionPairingData = null; toast(`Connected to ${paired.computerName || 'TaxMan on your PC'}.`); startCompanionPolling(); render(); }
   catch (error) { toast(error.message || 'TaxMan could not pair with this PC.', true); }
+}
+
+async function openPairingQrScanner() {
+  if (typeof window.jsQR !== 'function' || !navigator.mediaDevices?.getUserMedia) { toast('QR scanning is not available on this phone. Enter the PC address and code manually.', true); return; }
+  state.qrScanner = true;
+  state.qrScannerMessage = 'Point your camera at the QR code shown on your PC.';
+  render();
+  try {
+    const video = document.getElementById('pairing-qr-video');
+    qrScannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    video.srcObject = qrScannerStream;
+    await video.play();
+    scanPairingQrFrame(video);
+  } catch (error) {
+    stopQrScanner();
+    state.qrScanner = false;
+    render();
+    toast(error.name === 'NotAllowedError' ? 'Camera access was declined. Allow camera access to scan the PC code.' : 'The camera could not be opened. Enter the PC details manually.', true);
+  }
+}
+
+function scanPairingQrFrame(video) {
+  if (!state.qrScanner || !qrScannerStream) return;
+  if (video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+    const canvas = document.createElement('canvas');
+    const scale = Math.min(1, 900 / video.videoWidth);
+    canvas.width = Math.max(1, Math.floor(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.floor(video.videoHeight * scale));
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const result = window.jsQR(context.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, { inversionAttempts: 'attemptBoth' });
+    if (result?.data) { const pairing = parsePairingQr(result.data); if (pairing) { completePairingFromQr(pairing); return; } state.qrScannerMessage = 'That code is not a TaxMan pairing code. Find the code in the PC pairing window.'; }
+  }
+  qrScannerFrame = requestAnimationFrame(() => scanPairingQrFrame(video));
+}
+
+function parsePairingQr(value) {
+  try {
+    const parsed = new URL(String(value || ''));
+    const code = parsed.searchParams.get('code') || '';
+    if (!/^https?:$/.test(parsed.protocol) || parsed.pathname.replace(/\/+$/, '') !== '/pair' || !/^\d{6}$/.test(code)) return null;
+    return { baseUrl: `${parsed.protocol}//${parsed.host}`, code };
+  } catch { return null; }
+}
+
+async function completePairingFromQr(pairing) {
+  stopQrScanner();
+  state.qrScanner = false;
+  await pairComputerValues(pairing.baseUrl, pairing.code, 'My Android phone');
+}
+
+function stopQrScanner() {
+  if (qrScannerFrame) cancelAnimationFrame(qrScannerFrame);
+  qrScannerFrame = null;
+  if (qrScannerStream) qrScannerStream.getTracks().forEach((track) => track.stop());
+  qrScannerStream = null;
 }
 
 function startCompanionPolling() {
   if (!window.taxLedger.isMobileCompanion || companionPollTimer) return;
-  const poll = async () => { const result = await window.taxLedger.pollPairedCapture(); state.companionRequest = result; if (!result.paired) state.companionComputer = null; if (!state.companionPairing && !state.transactionDraft) render(); };
+  const poll = async () => { const result = await window.taxLedger.pollPairedCapture(); state.companionRequest = result; if (!result.paired) state.companionComputer = null; if (!state.companionPairing && !state.qrScanner && !state.transactionDraft) render(); };
   poll();
   companionPollTimer = setInterval(poll, 2500);
 }
