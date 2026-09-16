@@ -11,6 +11,7 @@ let menuActionCallback;
 
 contextBridge.exposeInMainWorld('taxLedger', {
   supportsPhoneCapture: true,
+  supportsOcr: true,
   loadStore: async () => testStore,
   saveStore: async (store) => { testStore = store; return store; },
   importJson: async () => ({ canceled: false, store: restoredStore }),
@@ -19,7 +20,8 @@ contextBridge.exposeInMainWorld('taxLedger', {
   exportPdf: async () => ({ canceled: false, path: 'test-report.pdf' }),
   openFolder: async () => {},
   checkForUpdates: async () => ({ status: 'unavailable', message: 'Automatic updates are available in the installed Windows version of TaxMan.' }),
-  getVersion: async () => '0.3.1',
+  readBillPhoto: async () => ({ date: '2026-09-16', companyId: 'company-theitsupportcenter', categoryId: 'expense-other', description: 'Smoke bill', amountCents: 1234, text: 'Smoke Company\n09/16/2026\nTOTAL $12.34' }),
+  getVersion: async () => '0.4.0',
   onMenuAction: (callback) => { menuActionCallback = callback; },
   testEmitMenuAction: async (action) => menuActionCallback?.(action)
 });

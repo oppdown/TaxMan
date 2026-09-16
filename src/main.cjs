@@ -11,6 +11,8 @@ const QRCode = require('qrcode');
 const { buildReportHtml, normalizeStore, validateStore, serializeCsv } = require('./core.cjs');
 const { createApplicationMenuTemplate } = require('./menu.cjs');
 const { loadStoreFromFiles } = require('./store-file.cjs');
+const { extractBillFields } = require('./ocr.cjs');
+const { createWorker } = require('tesseract.js');
 
 const DATA_FILE = 'data.json';
 const BACKUP_FILE = 'data.backup.json';
@@ -21,6 +23,7 @@ let phoneCaptureServer;
 let phoneCaptureSession;
 let updateCheckInProgress = false;
 let updatePromptOpen = false;
+let ocrWorkerPromise;
 
 function dataPath() { return path.join(app.getPath('userData'), DATA_FILE); }
 function backupPath() { return path.join(app.getPath('userData'), BACKUP_FILE); }
@@ -173,6 +176,20 @@ async function checkForUpdates() {
   } finally { updateCheckInProgress = false; }
 }
 
+async function readBillPhoto(imageData, store) {
+  if (typeof imageData !== 'string' || !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(imageData) || imageData.length > 12000000) throw new Error('The bill photo could not be read.');
+  if (!ocrWorkerPromise) ocrWorkerPromise = createWorker('eng', 1, { logger: () => {} });
+  let worker;
+  try {
+    worker = await ocrWorkerPromise;
+    const result = await worker.recognize(imageData);
+    return extractBillFields(result.data.text, store);
+  } catch (error) {
+    ocrWorkerPromise = null;
+    throw new Error(error.message || 'TaxMan could not read the bill photo.');
+  }
+}
+
 async function readStore() {
   const store = await loadStoreFromFiles({
     currentPath: dataPath(),
@@ -240,6 +257,7 @@ function registerIpc() {
   ipcMain.handle('app:version', () => app.getVersion());
   ipcMain.handle('phone-capture:start', () => startPhoneCapture());
   ipcMain.handle('phone-capture:stop', () => stopPhoneCapture());
+  ipcMain.handle('ocr:bill', (_event, imageData, store) => readBillPhoto(imageData, store));
 }
 
 function createWindow() {
@@ -257,4 +275,4 @@ app.whenReady().then(() => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('before-quit', () => { if (phoneCaptureServer) phoneCaptureServer.close(); });
+app.on('before-quit', () => { if (phoneCaptureServer) phoneCaptureServer.close(); if (ocrWorkerPromise) ocrWorkerPromise.then((worker) => worker?.terminate()).catch(() => {}); });

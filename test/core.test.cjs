@@ -26,6 +26,12 @@ test('empty store is a valid 2025 ledger', () => {
   assert.deepEqual(validateStore(store), []);
 });
 
+test('company home-office preference survives normalization', () => {
+  const store = normalizeStore({ companies: [{ id: 'power', name: 'Georgia Power', alwaysHomeOfficeRelated: true }] });
+  assert.equal(store.companies[0].alwaysHomeOfficeRelated, true);
+  assert.deepEqual(validateStore(store), []);
+});
+
 test('business allocation uses integer cents and rounds once', () => {
   assert.equal(businessAmountCents({ type: 'expense', amountCents: 999, businessUsePercent: 33.33 }), 333);
   assert.equal(businessAmountCents({ type: 'income', amountCents: 999, businessUsePercent: null }), 0);

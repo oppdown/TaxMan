@@ -77,7 +77,8 @@ function normalizeStore(input) {
       phone: cleanText(company.phone),
       email: cleanText(company.email),
       website: cleanText(company.website),
-      notes: cleanText(company.notes)
+      notes: cleanText(company.notes),
+      alwaysHomeOfficeRelated: Boolean(company.alwaysHomeOfficeRelated)
     })),
     categories: categories.map((category) => ({
       id: cleanText(category.id) || id('category'),

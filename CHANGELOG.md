@@ -1,7 +1,10 @@
 # Changelog
 
-## 0.3.1 - 2026-09-16
+## 0.4.0 - 2026-09-16
 
+- Added on-device bill-photo reading for Windows. TaxMan suggests the date, company, description, amount, and category from the image without sending the bill to a cloud service.
+- Kept OCR suggestions in the transaction form for user verification; TaxMan never creates or saves a transaction from OCR alone.
+- Added a company preference to always mark new expenses for that company as home-office-related, with a 33% starting business-use value that remains editable.
 - Fixed Windows upgrades so records from the former Tax Ledger data folder are migrated into TaxMan automatically.
 - Stabilized the Windows data location so future product-name changes do not strand local records.
 - Changed the Windows installer to request administrator approval automatically when launched normally.

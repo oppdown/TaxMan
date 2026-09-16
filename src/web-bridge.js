@@ -28,7 +28,7 @@ if (!window.taxLedger) {
     return {
       schemaVersion: 1,
       taxYear: Number.isInteger(source.taxYear) ? source.taxYear : base.taxYear,
-      companies: Array.isArray(source.companies) ? source.companies.map((item) => ({ id: String(item.id || cryptoId('company')), name: String(item.name || '').trim(), classification: String(item.classification || 'Other'), phone: String(item.phone || ''), email: String(item.email || ''), website: String(item.website || ''), notes: String(item.notes || '') })) : base.companies,
+      companies: Array.isArray(source.companies) ? source.companies.map((item) => ({ id: String(item.id || cryptoId('company')), name: String(item.name || '').trim(), classification: String(item.classification || 'Other'), phone: String(item.phone || ''), email: String(item.email || ''), website: String(item.website || ''), notes: String(item.notes || ''), alwaysHomeOfficeRelated: Boolean(item.alwaysHomeOfficeRelated) })) : base.companies,
       categories: Array.isArray(source.categories) ? source.categories.map((item) => ({ id: String(item.id || cryptoId('category')), type: item.type === 'income' ? 'income' : 'expense', name: String(item.name || '').trim(), active: item.active !== false })) : base.categories,
       transactions: Array.isArray(source.transactions) ? source.transactions.map((item) => ({ ...item, receiptImageData: typeof item.receiptImageData === 'string' ? item.receiptImageData : '' })) : [],
       updatedAt: new Date().toISOString()
@@ -56,6 +56,7 @@ if (!window.taxLedger) {
   }
   window.taxLedger = {
     supportsPhoneCapture: false,
+    supportsOcr: false,
     loadStore: async () => { try { return normalizeStore(JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')); } catch { return emptyStore(); } },
     saveStore: async (store) => { const normalized = normalizeStore(store); try { localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized)); } catch { throw new Error('The mobile ledger is full. Export a JSON backup, then remove an old photo.'); } return normalized; },
     importJson: chooseJsonFile,
@@ -64,9 +65,10 @@ if (!window.taxLedger) {
     exportPdf: async () => { window.print(); return { canceled: true }; },
     openFolder: async () => {},
     checkForUpdates: async () => { window.open('https://taxman.speedy-star-8288.chatgpt.site/download.html', '_blank'); },
-    getVersion: async () => '0.3.1',
+    getVersion: async () => '0.4.0',
     startPhoneCapture: async () => ({ direct: true }),
     stopPhoneCapture: async () => {},
+    readBillPhoto: async () => { throw new Error('Bill reading is available in the installed Windows version of TaxMan.'); },
     onPhoneCaptureUploaded: () => {}
   };
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js').catch(() => {});

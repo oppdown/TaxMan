@@ -2,7 +2,7 @@
 
 const TAX_YEAR = 2025;
 const NEW_COMPANY = '__create__';
-const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, companyModal: null, phoneCapture: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, appVersion: '0.3.1', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
+const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, phoneCapture: null, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, appVersion: '0.4.0', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
 
 document.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
@@ -37,6 +37,14 @@ function bindEvents() {
     if (event.target.id === 'transaction-company' && event.target.value === NEW_COMPANY) {
       state.companyModal = { editId: null, returnToTransaction: true };
       render();
+    }
+    if (event.target.id === 'transaction-company' && event.target.value !== NEW_COMPANY) {
+      const company = findCompany(event.target.value);
+      if (company?.alwaysHomeOfficeRelated && state.transactionDraft?.type === 'expense') {
+        state.transactionDraft.homeOfficeRelated = true;
+        state.transactionDraft.businessUsePercent = 33;
+        render();
+      }
     }
     if (event.target.id === 'home-office-related' && event.target.checked) {
       const businessUse = document.getElementById('business-use');
@@ -76,6 +84,7 @@ async function handleAction(action, element) {
   if (action === 'edit-company') { state.companyModal = { editId: element.dataset.id, returnToTransaction: false }; render(); }
   if (action === 'close-modal') { if (state.phoneCapture) await window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.aboutOpen = false; state.shortcutsOpen = false; render(); }
   if (action === 'start-phone-capture') await beginPhoneCapture();
+  if (action === 'read-bill-photo') await readBillPhoto();
   if (action === 'take-receipt-photo') document.getElementById('receipt-photo')?.click();
   if (action === 'cancel-phone-capture') { await window.taxLedger.stopPhoneCapture(); state.phoneCapture = null; render(); }
   if (action === 'copy-phone-url') await copyPhoneUrl();
@@ -168,7 +177,7 @@ function renderTransactionForm() {
     <div class="field"><label class="required" for="transaction-description">Description</label><input id="transaction-description" name="description" required maxlength="160" placeholder="What was this for?" value="${escapeAttr(draft.description)}"></div>
     <div class="field"><label class="required" for="transaction-amount">Amount (USD)</label><input id="transaction-amount" name="amount" inputmode="decimal" required placeholder="0.00" value="${escapeAttr(draft.amountCents ? (draft.amountCents / 100).toFixed(2) : '')}"><small>Enter the full amount paid or received.</small></div>
     ${isIncome ? '' : `<div class="field"><label class="required" for="business-use">Business use</label><input id="business-use" name="businessUsePercent" type="number" min="0" max="100" step="0.01" required value="${escapeAttr(draft.businessUsePercent ?? 100)}"><small>Use 100% for a fully business expense; shared costs can use a lower percentage.</small></div><div class="check-field"><input id="home-office-related" name="homeOfficeRelated" type="checkbox" ${draft.homeOfficeRelated ? 'checked' : ''}><label for="home-office-related">Mark as home-office-related</label></div>`}
-    <div class="field wide"><label>Bill photo</label><div class="photo-actions">${window.taxLedger.supportsPhoneCapture ? '<button type="button" class="secondary-button" data-action="start-phone-capture">Take with phone</button>' : '<button type="button" class="secondary-button" data-action="take-receipt-photo">Take photo</button>'}<label class="secondary-button file-button">Choose photo<input id="receipt-photo" type="file" accept="image/*" capture="environment"></label>${draft.receiptImageData ? '<span class="photo-attached">Photo attached</span>' : '<span class="muted">Optional</span>'}</div>${draft.receiptImageData ? `<div class="receipt-preview"><img src="${escapeAttr(draft.receiptImageData)}" alt="Attached bill photo"><button type="button" class="icon-button danger-text" data-action="remove-receipt-photo">Remove photo</button></div>` : `<small>${window.taxLedger.supportsPhoneCapture ? 'Use the phone link for a camera photo, or choose an image from this computer.' : 'Take a photo or choose an image. The bill stays on this device.'}</small>`}</div>
+    <div class="field wide"><label>Bill photo</label><div class="photo-actions">${window.taxLedger.supportsPhoneCapture ? '<button type="button" class="secondary-button" data-action="start-phone-capture">Take with phone</button>' : '<button type="button" class="secondary-button" data-action="take-receipt-photo">Take photo</button>'}<label class="secondary-button file-button">Choose photo<input id="receipt-photo" type="file" accept="image/*" capture="environment"></label>${draft.receiptImageData && window.taxLedger.supportsOcr ? `<button type="button" class="secondary-button" data-action="read-bill-photo" ${state.ocr?.busy ? 'disabled' : ''}>${state.ocr?.busy ? 'Reading bill…' : 'Read bill details'}</button>` : ''}${draft.receiptImageData ? '<span class="photo-attached">Photo attached</span>' : '<span class="muted">Optional</span>'}</div>${draft.receiptImageData ? `<div class="receipt-preview"><img src="${escapeAttr(draft.receiptImageData)}" alt="Attached bill photo"><button type="button" class="icon-button danger-text" data-action="remove-receipt-photo">Remove photo</button></div>${state.ocr?.message ? `<div class="notice"><strong>${escapeHtml(state.ocr.message)}</strong> Verify every suggested field before saving.</div>` : ''}${state.ocr?.text ? `<details class="ocr-details"><summary>Show text read from bill</summary><pre>${escapeHtml(state.ocr.text)}</pre></details>` : ''}` : `<small>${window.taxLedger.supportsPhoneCapture ? 'Use the phone link for a camera photo, or choose an image from this computer.' : 'Take a photo or choose an image. The bill stays on this device.'}</small>`}</div>
     <div class="field wide"><label for="transaction-notes">Notes</label><textarea id="transaction-notes" name="notes" maxlength="500" placeholder="Optional receipt reference or context">${escapeHtml(draft.notes)}</textarea></div>
   </div><div class="form-actions"><button type="button" class="secondary-button" data-action="cancel-form">Cancel</button><button type="submit" class="primary-button">Save transaction</button></div></form></div></section>`;
 }
@@ -187,7 +196,7 @@ function renderCompanies() {
   const companies = [...state.store.companies].sort((a, b) => a.name.localeCompare(b.name));
   const incomeCategories = state.store.categories.filter((category) => category.type === 'income');
   const expenseCategories = state.store.categories.filter((category) => category.type === 'expense');
-  return `<div class="grid-2"><section class="panel"><div class="panel-header"><div><h2>Companies &amp; sources</h2><p>Reusable names for utilities, vendors, clients, employers, and income sources.</p></div><div class="report-actions"><button class="primary-button" data-action="add-company">＋ Add new</button></div></div><div class="panel-body"><details class="danger-details"><summary>Advanced data cleanup</summary><p class="muted">Use only during setup cleanup. This removes every company/source entry and requires two confirmations. It is blocked while transactions reference companies.</p><button class="danger-button" data-action="clear-companies">Clear company data</button></details>${companies.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th>Classification</th><th>Contact</th><th>Actions</th></tr></thead><tbody>${companies.map((company) => `<tr><td><strong>${escapeHtml(company.name)}</strong>${company.notes ? `<br><span class="muted">${escapeHtml(company.notes)}</span>` : ''}</td><td><span class="tag">${escapeHtml(company.classification)}</span></td><td>${escapeHtml(company.phone || company.email || '—')}</td><td class="row-actions"><button class="icon-button" data-action="edit-company" data-id="${escapeAttr(company.id)}">Edit</button><button class="icon-button danger-text" data-action="delete-company" data-id="${escapeAttr(company.id)}">Delete</button></td></tr>`).join('')}</tbody></table></div>` : emptyState('No companies or sources yet', 'Add your utility companies and income sources here, or create them while entering a transaction.')}</div></section>
+  return `<div class="grid-2"><section class="panel"><div class="panel-header"><div><h2>Companies &amp; sources</h2><p>Reusable names for utilities, vendors, clients, employers, and income sources.</p></div><div class="report-actions"><button class="primary-button" data-action="add-company">＋ Add new</button></div></div><div class="panel-body"><details class="danger-details"><summary>Advanced data cleanup</summary><p class="muted">Use only during setup cleanup. This removes every company/source entry and requires two confirmations. It is blocked while transactions reference companies.</p><button class="danger-button" data-action="clear-companies">Clear company data</button></details>${companies.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th>Classification</th><th>Contact</th><th>Actions</th></tr></thead><tbody>${companies.map((company) => `<tr><td><strong>${escapeHtml(company.name)}</strong>${company.alwaysHomeOfficeRelated ? '<br><span class="muted">Always marks home office</span>' : ''}${company.notes ? `<br><span class="muted">${escapeHtml(company.notes)}</span>` : ''}</td><td><span class="tag">${escapeHtml(company.classification)}</span></td><td>${escapeHtml(company.phone || company.email || '—')}</td><td class="row-actions"><button class="icon-button" data-action="edit-company" data-id="${escapeAttr(company.id)}">Edit</button><button class="icon-button danger-text" data-action="delete-company" data-id="${escapeAttr(company.id)}">Delete</button></td></tr>`).join('')}</tbody></table></div>` : emptyState('No companies or sources yet', 'Add your utility companies and income sources here, or create them while entering a transaction.')}</div></section>
   <section class="panel"><div class="panel-header"><div><h2>Categories</h2><p>Keep labels that make sense to you and your preparer.</p></div></div><div class="panel-body"><form id="category-form"><div class="grid-2"><div class="field"><label class="required" for="category-type">Type</label><select id="category-type" name="type"><option value="expense">Expense</option><option value="income">Income</option></select></div><div class="field"><label class="required" for="category-name">New category</label><input id="category-name" name="name" required maxlength="80" placeholder="e.g. Equipment"></div></div><div class="form-actions"><button type="submit" class="secondary-button">Add category</button></div></form><h3 style="margin:25px 0 8px;color:var(--navy)">Income categories</h3>${categoryList(incomeCategories)}<h3 style="margin:25px 0 8px;color:var(--navy)">Expense categories</h3>${categoryList(expenseCategories)}</div></section></div>`;
 }
 
@@ -204,7 +213,7 @@ function renderReports() {
 function renderCompanyModal() {
   const company = state.companyModal.editId ? findCompany(state.companyModal.editId) : {};
   const title = state.companyModal.editId ? 'Edit company or source' : 'Create new company or source';
-  return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-header"><h2 id="modal-title">${title}</h2><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><form id="company-form"><input type="hidden" name="id" value="${escapeAttr(company.id || '')}"><div class="form-grid"><div class="field wide"><label class="required" for="company-name">Name</label><input id="company-name" name="name" required maxlength="120" placeholder="e.g. Georgia Power" value="${escapeAttr(company.name || '')}"></div><div class="field"><label for="company-classification">Classification</label><select id="company-classification" name="classification">${['Utility','Income source','Vendor','Client','Employer','Insurance','Bank','Other'].map((value) => `<option ${value === (company.classification || 'Other') ? 'selected' : ''}>${value}</option>`).join('')}</select></div><div class="field"><label for="company-phone">Phone</label><input id="company-phone" name="phone" maxlength="40" value="${escapeAttr(company.phone || '')}"></div><div class="field"><label for="company-email">Email</label><input id="company-email" name="email" type="email" maxlength="120" value="${escapeAttr(company.email || '')}"></div><div class="field"><label for="company-website">Website</label><input id="company-website" name="website" maxlength="160" value="${escapeAttr(company.website || '')}"></div><div class="field wide"><label for="company-notes">Notes</label><textarea id="company-notes" name="notes" maxlength="500">${escapeHtml(company.notes || '')}</textarea></div></div><div class="modal-actions"><button type="button" class="secondary-button" data-action="close-modal">Cancel</button><button type="submit" class="primary-button">Save company</button></div></form></div></section></div>`;
+  return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-header"><h2 id="modal-title">${title}</h2><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><form id="company-form"><input type="hidden" name="id" value="${escapeAttr(company.id || '')}"><div class="form-grid"><div class="field wide"><label class="required" for="company-name">Name</label><input id="company-name" name="name" required maxlength="120" placeholder="e.g. Georgia Power" value="${escapeAttr(company.name || '')}"></div><div class="field"><label for="company-classification">Classification</label><select id="company-classification" name="classification">${['Utility','Income source','Vendor','Client','Employer','Insurance','Bank','Other'].map((value) => `<option ${value === (company.classification || 'Other') ? 'selected' : ''}>${value}</option>`).join('')}</select></div><div class="field"><label for="company-phone">Phone</label><input id="company-phone" name="phone" maxlength="40" value="${escapeAttr(company.phone || '')}"></div><div class="field"><label for="company-email">Email</label><input id="company-email" name="email" type="email" maxlength="120" value="${escapeAttr(company.email || '')}"></div><div class="field"><label for="company-website">Website</label><input id="company-website" name="website" maxlength="160" value="${escapeAttr(company.website || '')}"></div><div class="field wide"><label for="company-notes">Notes</label><textarea id="company-notes" name="notes" maxlength="500">${escapeHtml(company.notes || '')}</textarea></div><div class="check-field wide"><input id="company-always-home-office" name="alwaysHomeOfficeRelated" type="checkbox" ${company.alwaysHomeOfficeRelated ? 'checked' : ''}><label for="company-always-home-office">Always mark new expenses for this company as home-office-related</label></div></div><div class="modal-actions"><button type="button" class="secondary-button" data-action="close-modal">Cancel</button><button type="submit" class="primary-button">Save company</button></div></form></div></section></div>`;
 }
 
 function renderPhoneCaptureModal() {
@@ -238,6 +247,7 @@ async function copyPhoneUrl() {
 async function handlePhoneCaptureUploaded(imageData) {
   if (!state.transactionDraft || !/^data:image\/(?:jpeg|png|webp);base64,/.test(String(imageData || ''))) return;
   state.transactionDraft.receiptImageData = imageData;
+  state.ocr = null;
   state.phoneCapture = null;
   await window.taxLedger.stopPhoneCapture();
   toast('Bill photo received. Review it before saving.');
@@ -247,9 +257,32 @@ async function handlePhoneCaptureUploaded(imageData) {
 async function handleReceiptFile(file) {
   try {
     state.transactionDraft.receiptImageData = await resizeReceiptImage(file);
+    state.ocr = null;
     toast('Bill photo attached. Review it before saving.');
     render();
   } catch (error) { toast(error.message || 'The photo could not be attached.', true); }
+}
+
+async function readBillPhoto() {
+  if (!state.transactionDraft?.receiptImageData || !window.taxLedger.readBillPhoto) return;
+  state.ocr = { busy: true, message: 'Reading the bill photo…', text: '' };
+  render();
+  try {
+    const result = await window.taxLedger.readBillPhoto(state.transactionDraft.receiptImageData, state.store);
+    const suggestions = result || {};
+    const updates = {};
+    if (!state.transactionDraft.date && suggestions.date) updates.date = suggestions.date;
+    if (!state.transactionDraft.companyId && suggestions.companyId) updates.companyId = suggestions.companyId;
+    if (!state.transactionDraft.categoryId && suggestions.categoryId) updates.categoryId = suggestions.categoryId;
+    if (!state.transactionDraft.description && suggestions.description) updates.description = suggestions.description;
+    if (!state.transactionDraft.amountCents && suggestions.amountCents) updates.amountCents = suggestions.amountCents;
+    Object.assign(state.transactionDraft, updates);
+    const count = Object.keys(updates).length;
+    state.ocr = { busy: false, message: count ? `Suggested ${count} field${count === 1 ? '' : 's'} from the bill photo.` : 'No clear transaction fields were found.', text: suggestions.text || '' };
+  } catch (error) {
+    state.ocr = { busy: false, message: error.message || 'The bill photo could not be read.', text: '' };
+  }
+  render();
 }
 
 function resizeReceiptImage(file) {
@@ -278,6 +311,7 @@ function openTransaction(type, idValue) {
   state.view = 'transactions';
   if (idValue) { const transaction = state.store.transactions.find((item) => item.id === idValue); state.transactionDraft = { ...transaction }; state.selectedYear = transaction.taxYear; }
   else { state.transactionDraft = { type: type || 'expense', date: '', companyId: '', categoryId: '', description: '', amountCents: 0, businessUsePercent: 100, homeOfficeRelated: false, notes: '', receiptImageData: '' }; }
+  state.ocr = null;
   render();
   setTimeout(() => document.getElementById('transaction-date')?.focus(), 0);
 }
@@ -315,11 +349,11 @@ async function saveCompany(form) {
   const duplicate = state.store.companies.find((company) => company.name.toLowerCase() === name.toLowerCase() && company.id !== form.get('id'));
   if (duplicate) { toast('That company or source already exists.', true); return; }
   const existing = state.store.companies.find((company) => company.id === form.get('id'));
-  const company = { id: existing?.id || `company-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, classification: String(form.get('classification') || 'Other'), phone: String(form.get('phone') || '').trim(), email: String(form.get('email') || '').trim(), website: String(form.get('website') || '').trim(), notes: String(form.get('notes') || '').trim() };
+  const company = { id: existing?.id || `company-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, classification: String(form.get('classification') || 'Other'), phone: String(form.get('phone') || '').trim(), email: String(form.get('email') || '').trim(), website: String(form.get('website') || '').trim(), notes: String(form.get('notes') || '').trim(), alwaysHomeOfficeRelated: form.get('alwaysHomeOfficeRelated') === 'on' };
   if (existing) state.store.companies = state.store.companies.map((item) => item.id === existing.id ? company : item); else state.store.companies.push(company);
   try { await persist(); } catch (error) { toast(error.message || 'Company could not be saved.', true); return; }
   const returnToTransaction = state.companyModal.returnToTransaction;
-  if (returnToTransaction) { state.transactionDraft.companyId = company.id; state.view = 'transactions'; }
+  if (returnToTransaction) { state.transactionDraft.companyId = company.id; if (company.alwaysHomeOfficeRelated && state.transactionDraft.type === 'expense') { state.transactionDraft.homeOfficeRelated = true; state.transactionDraft.businessUsePercent = 33; } state.view = 'transactions'; }
   else state.view = 'companies';
   state.companyModal = null; toast(existing ? 'Company updated.' : 'Company created.'); render();
 }
@@ -394,7 +428,7 @@ function handleUpdateStatus(status) {
 }
 
 function filteredTransactions() { const search = state.search.toLowerCase(); return [...state.store.transactions].filter((transaction) => transaction.taxYear === Number(state.selectedYear)).filter((transaction) => { const company = findCompany(transaction.companyId)?.name || ''; const matchesSearch = !search || [company, transaction.description, transaction.notes].some((value) => value.toLowerCase().includes(search)); return (state.typeFilter === 'all' || transaction.type === state.typeFilter) && (state.categoryFilter === 'all' || transaction.categoryId === state.categoryFilter) && matchesSearch; }).sort((a, b) => b.date.localeCompare(a.date)); }
-function companyOptions(selected) { return `<option value="">Choose a company/source</option>${[...state.store.companies].sort((a, b) => a.name.localeCompare(b.name)).map((company) => `<option value="${escapeAttr(company.id)}" ${company.id === selected ? 'selected' : ''}>${escapeHtml(company.name)}</option>`).join('')}<option value="${NEW_COMPANY}">＋ Create new company/source…</option>`; }
+function companyOptions(selected) { return `<option value="">Choose a company/source</option>${[...state.store.companies].sort((a, b) => a.name.localeCompare(b.name)).map((company) => `<option value="${escapeAttr(company.id)}" ${company.id === selected ? 'selected' : ''}>${escapeHtml(company.name)}${company.alwaysHomeOfficeRelated ? ' · home office default' : ''}</option>`).join('')}<option value="${NEW_COMPANY}">＋ Create new company/source…</option>`; }
 function categoryOptions(type, selected) { const categories = state.store.categories.filter((category) => category.type === type && (category.active || category.id === selected)).sort((a, b) => a.name.localeCompare(b.name)); return `<option value="">Choose a category</option>${categories.map((category) => `<option value="${escapeAttr(category.id)}" ${category.id === selected ? 'selected' : ''}>${escapeHtml(category.name)}</option>`).join('')}`; }
 function findCompany(idValue) { return state.store.companies.find((company) => company.id === idValue); }
 function findCategory(idValue) { return state.store.categories.find((category) => category.id === idValue); }

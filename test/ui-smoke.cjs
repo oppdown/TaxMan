@@ -19,6 +19,7 @@ async function main() {
     checks.quickAddOpensForm = Boolean(document.getElementById('transaction-form'));
     checks.newTransactionDateStartsBlank = document.getElementById('transaction-date')?.value === '';
     checks.phonePhotoCapturePresent = Boolean(document.querySelector('[data-action="start-phone-capture"]')) && document.getElementById('receipt-photo')?.accept === 'image/*';
+    checks.readBillSupportEnabled = window.taxLedger.supportsOcr === true;
 
     set('transaction-company', '__create__'); await wait();
     checks.createNewFromDropdown = document.getElementById('modal-title')?.textContent.includes('Create new');
@@ -45,13 +46,22 @@ async function main() {
     const companyRow = [...document.querySelectorAll('tbody tr')].find((row) => row.textContent.includes('Smoke Company'));
     if (!companyRow) throw new Error('Smoke Company was not present in the Companies & Sources directory');
     companyRow.querySelector('[data-action="edit-company"]').click(); await wait();
+    checks.companyHomeOfficePreferencePresent = Boolean(document.getElementById('company-always-home-office'));
     set('company-name', 'Smoke Company Updated');
+    document.getElementById('company-always-home-office').click();
     await submit('company-form');
     checks.companyEditStaysInDirectory = document.getElementById('page-title').textContent === 'Companies & Sources' && document.body.textContent.includes('Smoke Company Updated');
+    document.querySelector('[data-view="transactions"]').click(); await wait();
+    document.querySelector('[data-action="show-add"]').click(); await wait();
+    const smokeCompanyOption = [...document.querySelectorAll('#transaction-company option')].find((option) => option.textContent.includes('Smoke Company Updated'));
+    document.getElementById('transaction-company').value = smokeCompanyOption.value;
+    document.getElementById('transaction-company').dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    checks.companyHomeOfficeDefaultsNewExpense = document.getElementById('home-office-related')?.checked === true && document.getElementById('business-use')?.value === '33';
+    document.querySelector('[data-action="cancel-form"]').click(); await wait();
 
     await window.taxLedger.testEmitMenuAction('show-about'); await wait();
     checks.helpMenuOpens = Boolean(document.querySelector('[aria-labelledby="about-title"]'));
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.3.1');
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.0');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
     await window.taxLedger.testEmitMenuAction('check-for-updates'); await wait();
     checks.checkForUpdatesAction = document.body.textContent.includes('Automatic updates are available in the installed Windows version of TaxMan.');

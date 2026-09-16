@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('taxLedger', {
   getVersion: () => ipcRenderer.invoke('app:version'),
   startPhoneCapture: () => ipcRenderer.invoke('phone-capture:start'),
   stopPhoneCapture: () => ipcRenderer.invoke('phone-capture:stop'),
+  supportsOcr: true,
+  readBillPhoto: (imageData, store) => ipcRenderer.invoke('ocr:bill', imageData, store),
   onPhoneCaptureUploaded: (callback) => ipcRenderer.on('phone-capture:uploaded', (_event, imageData) => callback(imageData)),
   onMenuAction: (callback) => ipcRenderer.on('menu:action', (_event, action) => callback(action))
 });
