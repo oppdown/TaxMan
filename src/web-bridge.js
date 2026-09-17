@@ -21,7 +21,7 @@ if (!window.taxLedger) {
   const DEFAULT_WORK_TIME = { hoursPerDay: 8, daysPerWeek: 7 };
 
   function emptyStore() {
-    return { schemaVersion: 1, taxYear: 2025, companies: DEFAULT_COMPANIES.map(([id, name, classification]) => ({ id, name, classification, phone: '', email: '', website: '', notes: '' })), categories: DEFAULT_CATEGORIES.map(([id, type, name]) => ({ id, type, name, active: true })), workTime: { ...DEFAULT_WORK_TIME }, transactions: [], updatedAt: new Date().toISOString() };
+    return { schemaVersion: 1, taxYear: 2025, companies: DEFAULT_COMPANIES.map(([id, name, classification]) => ({ id, name, classification, phone: '', email: '', website: '', notes: '', mailingAddress1: '', mailingAddress2: '', mailingCity: '', mailingState: '', mailingPostalCode: '' })), categories: DEFAULT_CATEGORIES.map(([id, type, name]) => ({ id, type, name, active: true })), workTime: { ...DEFAULT_WORK_TIME }, transactions: [], updatedAt: new Date().toISOString() };
   }
   function normalizeWorkTime(value) { const source = value && typeof value === 'object' ? value : {}; const hoursPerDay = Number(source.hoursPerDay); const daysPerWeek = Number(source.daysPerWeek); return { hoursPerDay: Number.isFinite(hoursPerDay) ? Math.round(Math.max(0, Math.min(24, hoursPerDay)) * 100) / 100 : DEFAULT_WORK_TIME.hoursPerDay, daysPerWeek: Number.isFinite(daysPerWeek) ? Math.round(Math.max(0, Math.min(7, daysPerWeek)) * 100) / 100 : DEFAULT_WORK_TIME.daysPerWeek }; }
   function normalizeStore(input) {
@@ -30,7 +30,7 @@ if (!window.taxLedger) {
     return {
       schemaVersion: 1,
       taxYear: Number.isInteger(source.taxYear) ? source.taxYear : base.taxYear,
-      companies: Array.isArray(source.companies) ? source.companies.map((item) => ({ id: String(item.id || cryptoId('company')), name: String(item.name || '').trim(), classification: String(item.classification || 'Other'), phone: String(item.phone || ''), email: String(item.email || ''), website: String(item.website || ''), notes: String(item.notes || ''), alwaysHomeOfficeRelated: Boolean(item.alwaysHomeOfficeRelated) })) : base.companies,
+      companies: Array.isArray(source.companies) ? source.companies.map((item) => ({ id: String(item.id || cryptoId('company')), name: String(item.name || '').trim(), classification: String(item.classification || 'Other'), phone: String(item.phone || ''), email: String(item.email || ''), website: String(item.website || ''), notes: String(item.notes || ''), mailingAddress1: String(item.mailingAddress1 || ''), mailingAddress2: String(item.mailingAddress2 || ''), mailingCity: String(item.mailingCity || ''), mailingState: String(item.mailingState || ''), mailingPostalCode: String(item.mailingPostalCode || ''), alwaysHomeOfficeRelated: Boolean(item.alwaysHomeOfficeRelated) })) : base.companies,
       categories: Array.isArray(source.categories) ? source.categories.map((item) => ({ id: String(item.id || cryptoId('category')), type: item.type === 'income' ? 'income' : 'expense', name: String(item.name || '').trim(), active: item.active !== false })) : base.categories,
       workTime: normalizeWorkTime(source.workTime || base.workTime),
       transactions: Array.isArray(source.transactions) ? source.transactions.map((item) => { const receiptImages = Array.isArray(item.receiptImages) ? item.receiptImages.filter((image) => typeof image === 'string').slice(0, 20) : (typeof item.receiptImageData === 'string' && item.receiptImageData ? [item.receiptImageData] : []); return { ...item, paidDate: typeof item.paidDate === 'string' ? item.paidDate : '', receiptImages, receiptImageData: receiptImages[0] || '' }; }) : [],
@@ -120,7 +120,7 @@ if (!window.taxLedger) {
     exportPdf: async () => { window.print(); return { canceled: true }; },
     openFolder: async () => {},
     checkForUpdates: async () => { window.open('https://taxman.speedy-star-8288.chatgpt.site/download.html', '_blank'); },
-    getVersion: async () => '0.4.7',
+    getVersion: async () => '0.4.8',
     startPhoneCapture: async () => ({ direct: true }),
     stopPhoneCapture: async () => {},
     getPairedComputer: async () => loadPairedComputer(),

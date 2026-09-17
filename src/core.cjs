@@ -3,15 +3,15 @@
 const TAX_YEAR = 2025;
 
 const DEFAULT_COMPANIES = [
-  { id: 'company-hart-emc', name: 'Hart EMC', classification: 'Utility', phone: '', email: '', website: '', notes: '' },
-  { id: 'company-att-mobile', name: 'AT&T Mobile', classification: 'Utility', phone: '', email: '', website: '', notes: '' },
-  { id: 'company-windstream-internet', name: 'Windstream Internet', classification: 'Utility', phone: '', email: '', website: '', notes: '' },
-  { id: 'company-progressive-car-insurance', name: 'Progressive Car Insurance', classification: 'Insurance', phone: '', email: '', website: '', notes: '' },
-  { id: 'company-chatgpt', name: 'ChatGPT', classification: 'Vendor', phone: '', email: '', website: '', notes: '' },
-  { id: 'company-ne-georgia-bank', name: 'NE Georgia Bank', classification: 'Bank', phone: '', email: '', website: '', notes: 'Banking costs' },
-  { id: 'company-city-royston-natural-gas', name: 'City of Royston - Natural Gas', classification: 'Utility', phone: '', email: '', website: '', notes: '' },
-  { id: 'company-franklin-county-water', name: 'Franklin County Water Department', classification: 'Utility', phone: '', email: '', website: '', notes: '' },
-  { id: 'company-theitsupportcenter', name: 'theITSupportCenter', classification: 'Income source', phone: '', email: '', website: '', notes: '' }
+  { id: 'company-hart-emc', name: 'Hart EMC', classification: 'Utility', phone: '', email: '', website: '', notes: '', mailingAddress1: '', mailingAddress2: '', mailingCity: '', mailingState: '', mailingPostalCode: '' },
+  { id: 'company-att-mobile', name: 'AT&T Mobile', classification: 'Utility', phone: '', email: '', website: '', notes: '', mailingAddress1: '', mailingAddress2: '', mailingCity: '', mailingState: '', mailingPostalCode: '' },
+  { id: 'company-windstream-internet', name: 'Windstream Internet', classification: 'Utility', phone: '', email: '', website: '', notes: '', mailingAddress1: '', mailingAddress2: '', mailingCity: '', mailingState: '', mailingPostalCode: '' },
+  { id: 'company-progressive-car-insurance', name: 'Progressive Car Insurance', classification: 'Insurance', phone: '', email: '', website: '', notes: '', mailingAddress1: '', mailingAddress2: '', mailingCity: '', mailingState: '', mailingPostalCode: '' },
+  { id: 'company-chatgpt', name: 'ChatGPT', classification: 'Vendor', phone: '', email: '', website: '', notes: '', mailingAddress1: '', mailingAddress2: '', mailingCity: '', mailingState: '', mailingPostalCode: '' },
+  { id: 'company-ne-georgia-bank', name: 'NE Georgia Bank', classification: 'Bank', phone: '', email: '', website: '', notes: 'Banking costs', mailingAddress1: '', mailingAddress2: '', mailingCity: '', mailingState: '', mailingPostalCode: '' },
+  { id: 'company-city-royston-natural-gas', name: 'City of Royston - Natural Gas', classification: 'Utility', phone: '', email: '', website: '', notes: '', mailingAddress1: '', mailingAddress2: '', mailingCity: '', mailingState: '', mailingPostalCode: '' },
+  { id: 'company-franklin-county-water', name: 'Franklin County Water Department', classification: 'Utility', phone: '', email: '', website: '', notes: '', mailingAddress1: '', mailingAddress2: '', mailingCity: '', mailingState: '', mailingPostalCode: '' },
+  { id: 'company-theitsupportcenter', name: 'theITSupportCenter', classification: 'Income source', phone: '', email: '', website: '', notes: '', mailingAddress1: '', mailingAddress2: '', mailingCity: '', mailingState: '', mailingPostalCode: '' }
 ];
 
 const DEFAULT_CATEGORIES = [
@@ -96,6 +96,11 @@ function normalizeStore(input) {
       email: cleanText(company.email),
       website: cleanText(company.website),
       notes: cleanText(company.notes),
+      mailingAddress1: cleanText(company.mailingAddress1),
+      mailingAddress2: cleanText(company.mailingAddress2),
+      mailingCity: cleanText(company.mailingCity),
+      mailingState: cleanText(company.mailingState),
+      mailingPostalCode: cleanText(company.mailingPostalCode),
       alwaysHomeOfficeRelated: Boolean(company.alwaysHomeOfficeRelated)
     })),
     categories: categories.map((category) => ({

@@ -16,11 +16,11 @@ test('bill OCR parser extracts reviewable fields and matches known companies', (
   assert.equal(result.categoryId, 'expense-utilities');
 });
 
-test('bill OCR parser leaves unknown vendors for user review', () => {
+test('bill OCR parser does not invent a vendor from unknown text', () => {
   const result = extractBillFields('New Vendor\nInvoice\nJanuary 3, 2026\nTotal $9.99');
   assert.equal(result.date, '2026-01-03');
   assert.equal(result.companyId, '');
-  assert.equal(result.vendor, 'New Vendor');
+  assert.equal(result.vendor, '');
   assert.equal(result.amountCents, 999);
 });
 
@@ -57,4 +57,13 @@ test('bill OCR recognizes a known company with small OCR word errors', () => {
   const result = extractBillFields('Georgia Poweer\nAmount Due $42.00', store);
   assert.equal(result.vendor, 'Georgia Power');
   assert.equal(result.companyId, 'company-power');
+});
+
+test('bill OCR extracts Hart EMC due date, amount, and mailing address from labeled lines', () => {
+  const result = extractBillFields('Hert EMC\nP.0. BOX 250, HARTWELL, GA 30643\n04/17/26 Previous payment\nTOTAL CURRENT BILL DUE 05/17/26 78.21\nPREVIOUS AMOUNT DUE 74.32\nTHANK YOU FOR YOUR PAYMENT 04/17/26 -74.32', createEmptyStore());
+  assert.equal(result.vendor, 'Hart EMC');
+  assert.equal(result.companyId, 'company-hart-emc');
+  assert.equal(result.date, '2026-05-17');
+  assert.equal(result.amountCents, 7821);
+  assert.deepEqual(result.companyAddress, { mailingAddress1: 'P.O. BOX 250', mailingAddress2: '', mailingCity: 'HARTWELL', mailingState: 'GA', mailingPostalCode: '30643' });
 });

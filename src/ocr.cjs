@@ -47,7 +47,7 @@ function dateMatchesInLine(line, allowCompact = false) {
 function dateScore(line, index) {
   const lower = line.toLowerCase();
   const before = lower.slice(Math.max(0, index - 45), index);
-  const dueLabel = /due\s*date|payment\s+due|due\s+by|pay(?:ment)?\s+by/;
+  const dueLabel = /due\s*date|(?:total\s+)?(?:current\s+)?bill\s+due|(?:total\s+)?amount\s+due|balance\s+due|payment\s+due|due\s+by|pay(?:ment)?\s+by/;
   const priorPayment = /previous\s+payment|last\s+payment|prior\s+payment|payment\s+(?:received|posted|made)|paid\s+on/;
   let score = 0;
   if (dueLabel.test(before)) score += 1000;
@@ -58,7 +58,7 @@ function dateScore(line, index) {
 }
 
 function extractDate(lines) {
-  const dueContextLines = lines.map((line, index) => ({ line, index })).filter(({ line }) => /due\s*date|payment\s+due|due\s+by|pay(?:ment)?\s+by/i.test(line));
+  const dueContextLines = lines.map((line, index) => ({ line, index })).filter(({ line }) => /due\s*date|(?:total\s+)?(?:current\s+)?bill\s+due|(?:total\s+)?amount\s+due|balance\s+due|payment\s+due|due\s+by|pay(?:ment)?\s+by/i.test(line));
   const candidates = lines.flatMap((line, lineIndex) => {
     const dueNearby = dueContextLines.some(({ index }) => lineIndex > index && lineIndex <= index + 2);
     return dateMatchesInLine(line, dueNearby).map((match) => ({ ...match, line, lineIndex, score: dateScore(line, match.index) }));
@@ -76,8 +76,17 @@ function amountsIn(line) {
 }
 
 function extractAmount(lines) {
-  const preferred = lines.filter((line) => /total|amount due|balance due|payment due|due today|grand total/i.test(line)).flatMap(amountsIn);
-  const candidates = preferred.length ? preferred : lines.flatMap(amountsIn);
+  const labeled = lines.flatMap((line, lineIndex) => amountsIn(line).map((amount) => {
+    const lower = line.toLowerCase();
+    let score = 0;
+    if (/total\s+(?:current\s+)?bill\s+due|total\s+amount\s+due|grand\s+total/.test(lower)) score += 500;
+    else if (/amount\s+due|balance\s+due|payment\s+due|due\s+today/.test(lower)) score += 300;
+    if (/previous\s+amount\s+due|previous\s+payment|thank\s+you\s+for\s+your\s+payment|paid\s+on/.test(lower)) score -= 500;
+    if (/tax|adjustment|subtotal/.test(lower)) score -= 100;
+    return { amount, score, lineIndex };
+  })).filter((candidate) => candidate.score > 0);
+  if (labeled.length) return labeled.sort((a, b) => b.score - a.score || b.lineIndex - a.lineIndex || b.amount - a.amount)[0].amount;
+  const candidates = lines.flatMap(amountsIn);
   return candidates.length ? Math.max(...candidates) : 0;
 }
 
@@ -95,6 +104,15 @@ function meaningfulNameTokens(value) {
 function nameTokenMatches(expected, actual) {
   if (expected === actual) return true;
   if (expected.length >= 5 && actual.length >= 5 && (expected.startsWith(actual.slice(0, 4)) || actual.startsWith(expected.slice(0, 4)))) return true;
+  if (expected.length >= 4 && actual.length >= 4) {
+    let previous = Array.from({ length: actual.length + 1 }, (_, index) => index);
+    for (let row = 1; row <= expected.length; row += 1) {
+      const current = [row];
+      for (let column = 1; column <= actual.length; column += 1) current[column] = Math.min(current[column - 1] + 1, previous[column] + 1, previous[column - 1] + (expected[row - 1] === actual[column - 1] ? 0 : 1));
+      previous = current;
+    }
+    if (previous[actual.length] <= 1) return true;
+  }
   return false;
 }
 
@@ -112,19 +130,17 @@ function extractVendor(lines, companies = []) {
     return lines.some((line) => companyAppearsInLine(company.name, line));
   });
   if (companyMatch) return { vendor: companyMatch.name, companyId: companyMatch.id };
-  const likelyVendor = (line, index) => {
-    const value = String(line || '').trim();
-    const words = value.split(/\s+/).filter(Boolean);
-    const letters = (value.match(/[A-Za-z]/g) || []).length;
-    const digitWords = words.filter((word) => /^\d+$/.test(word));
-    if (index > 5 || value.length < 3 || value.length > 60 || !/[A-Za-z]{3}/.test(value)) return false;
-    if (digitWords.length || /^\d+\s/.test(value) || /www\.|https?:|[@#$%]/i.test(value)) return false;
-    if (words.some((word) => VENDOR_NOISE.test(word.replace(/[^A-Za-z]/g, '')))) return false;
-    if (letters < 4 || words.length > 6) return false;
-    return true;
-  };
-  const vendor = lines.find(likelyVendor) || '';
-  return { vendor: vendor || '', companyId: '' };
+  // Unknown OCR text is deliberately not promoted into a company suggestion.
+  // A bad suggestion is more harmful than leaving the field for the user.
+  return { vendor: '', companyId: '' };
+}
+
+function extractCompanyAddress(lines) {
+  const addressLine = lines.find((line) => /P[.\s]*[O0][.\s]*BOX\s+\d+/i.test(line) && /\b[A-Za-z]{2}\s+\d{5}(?:-\d{4})?\b/.test(line));
+  if (!addressLine) return null;
+  const match = addressLine.match(/(P[.\s]*[O0][.\s]*BOX\s+\d+)\s*,?\s*([A-Za-z .'-]+?)\s*,\s*([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)/i);
+  if (!match) return null;
+  return { mailingAddress1: match[1].replace(/^P[.\s]*[O0][.\s]*BOX/i, 'P.O. BOX').replace(/\s+/g, ' ').trim(), mailingAddress2: '', mailingCity: match[2].trim(), mailingState: match[3].toUpperCase(), mailingPostalCode: match[4] };
 }
 
 function extractCategoryId(lines, categories = []) {
@@ -156,6 +172,7 @@ function extractBillFields(text, store = {}) {
     categoryId: extractCategoryId(lines, store.categories || []),
     description: '',
     amountCents: extractAmount(lines),
+    companyAddress: extractCompanyAddress(lines),
     text: lines.join('\n')
   };
 }

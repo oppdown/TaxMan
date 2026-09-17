@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.8 - 2026-09-17
+
+- Added an existing company/source selector to the company form so users can review or update a saved record instead of creating duplicates.
+- Added mailing address line, city, state, and ZIP fields to company/source records and the company directory.
+- OCR now refuses to invent a company from uncertain text, matches known companies with small spelling errors, and prioritizes labeled bill-due and amount-due values.
+- Added reviewable company-address extraction from common P.O. Box lines without silently saving it.
+
 ## 0.4.7 - 2026-09-17
 
 - Added Edit actions to transaction rows shown on the Dashboard as well as the Transactions view.

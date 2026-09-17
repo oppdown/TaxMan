@@ -39,6 +39,15 @@ test('company home-office preference survives normalization', () => {
   assert.deepEqual(validateStore(store), []);
 });
 
+test('company mailing address fields survive normalization', () => {
+  const store = normalizeStore({ companies: [{ id: 'power', name: 'Georgia Power', mailingAddress1: 'P.O. Box 123', mailingCity: 'Atlanta', mailingState: 'GA', mailingPostalCode: '30301' }] });
+  assert.equal(store.companies[0].mailingAddress1, 'P.O. Box 123');
+  assert.equal(store.companies[0].mailingCity, 'Atlanta');
+  assert.equal(store.companies[0].mailingState, 'GA');
+  assert.equal(store.companies[0].mailingPostalCode, '30301');
+  assert.equal(store.companies[0].mailingAddress2, '');
+});
+
 test('business allocation uses integer cents and rounds once', () => {
   assert.equal(businessAmountCents({ type: 'expense', amountCents: 999, businessUsePercent: 33.33 }), 333);
   assert.equal(businessAmountCents({ type: 'income', amountCents: 999, businessUsePercent: null }), 0);

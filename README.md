@@ -2,7 +2,7 @@
 
 ![TaxMan icon](src/assets/taxman-icon.png)
 
-Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.7 adds Edit actions throughout the ledger, an All years view, multi-page bill photos, persistent paired-phone capture, and safer OCR descriptions.
+Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.8 adds reusable company selection and mailing addresses, safer company OCR matching, and stronger labeled due-date and amount extraction.
 
 ## Use
 

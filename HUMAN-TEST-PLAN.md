@@ -1,4 +1,4 @@
-# TaxMan 0.4.7 human release test
+# TaxMan 0.4.8 human release test
 
 ## What is ready
 
@@ -15,7 +15,7 @@ Android data is stored on the Android device and does not synchronize with the W
 
 ## Windows test
 
-1. Double-click `dist/TaxMan-0.4.7-Setup.exe` on a Windows 10/11 x64 machine. Confirm Windows presents its normal permission prompt automatically, without using **Run as administrator**. Also launch `dist/TaxMan-0.4.7-Portable.exe` from a separate folder.
+1. Double-click `dist/TaxMan-0.4.8-Setup.exe` on a Windows 10/11 x64 machine. Confirm Windows presents its normal permission prompt automatically, without using **Run as administrator**. Also launch `dist/TaxMan-0.4.8-Portable.exe` from a separate folder.
 2. If upgrading from TaxMan 0.2.x, confirm the existing records appear immediately after launch. Create an expense with a date, company, category, description, amount, business-use percentage, and notes. Close and reopen TaxMan; confirm the row and totals remain.
 3. Open an expense and choose **Take with phone**. Put the PC and phone on the same Wi-Fi, scan the displayed QR code with the phone camera, allow camera/photo access, take a clear bill photo, and confirm the preview returns to TaxMan. Also verify the displayed address works when entered manually.
 4. Choose **Read bill details**. Confirm the date, company when it matches an existing company, description, amount, and category are suggestions in the form. Deliberately correct at least one field, then save and reopen the transaction.
@@ -49,5 +49,5 @@ For each failure, send: platform and OS version, device model, the exact step, w
 - A decision between sideloaded APK distribution and Google Play.
 - For Google Play: the developer account, final app listing text/screenshots, privacy-policy URL, and a release/upload keystore kept outside the repository.
 - At least one real Android phone for camera, permission, back-button, rotation, and persistence testing.
-- Android pairing in 0.4.7 keeps the Windows review-and-save workflow authoritative; descriptions are intentionally left for user entry when OCR is uncertain.
+- Android pairing in 0.4.8 keeps the Windows review-and-save workflow authoritative; descriptions are intentionally left for user entry when OCR is uncertain.
 - Confirm a bill showing both **Previous payment** and **Due date** suggests the due date, not the historical payment date. Compact formats such as 051726 should also be interpreted correctly when labeled.
