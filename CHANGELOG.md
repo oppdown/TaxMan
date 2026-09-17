@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.9 - 2026-09-17
+
+- Changed bill OCR to reference-only: it no longer fills the transaction date, amount, category, or description.
+- Kept confident matching to a company already saved in TaxMan, including saved home-office defaults.
+- Added a side-by-side OCR reference view with selectable text and a Copy all text action.
+- Added 75%, 100%, 150%, and 200% bill-photo zoom controls for reviewing receipt details.
+
 ## 0.4.8 - 2026-09-17
 
 - Added an existing company/source selector to the company form so users can review or update a saved record instead of creating duplicates.

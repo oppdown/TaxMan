@@ -21,7 +21,7 @@ contextBridge.exposeInMainWorld('taxLedger', {
   openFolder: async () => {},
   checkForUpdates: async () => ({ status: 'unavailable', message: 'Automatic updates are available in the installed Windows version of TaxMan.' }),
   readBillPhoto: async () => ({ date: '2026-09-16', companyId: 'company-theitsupportcenter', categoryId: 'expense-other', description: 'Smoke bill', amountCents: 1234, text: 'Smoke Company\n09/16/2026\nTOTAL $12.34' }),
-  getVersion: async () => '0.4.8',
+  getVersion: async () => '0.4.9',
   onMenuAction: (callback) => { menuActionCallback = callback; },
   testEmitMenuAction: async (action) => menuActionCallback?.(action)
 });
