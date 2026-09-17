@@ -85,21 +85,42 @@ function normalizedName(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+const COMPANY_STOP_WORDS = new Set(['and', 'at', 'co', 'company', 'corp', 'corporation', 'inc', 'incorporated', 'llc', 'limited', 'the']);
+const VENDOR_NOISE = /^(?:account|address|amount|balance|bill|billing|customer|date|description|due|invoice|number|page|payment|phone|previous|receipt|remit|service|statement|subtotal|tax|thank|total|www)$/i;
+
+function meaningfulNameTokens(value) {
+  return normalizedName(value).split(' ').filter((token) => token.length > 1 && !COMPANY_STOP_WORDS.has(token));
+}
+
+function nameTokenMatches(expected, actual) {
+  if (expected === actual) return true;
+  if (expected.length >= 5 && actual.length >= 5 && (expected.startsWith(actual.slice(0, 4)) || actual.startsWith(expected.slice(0, 4)))) return true;
+  return false;
+}
+
+function companyAppearsInLine(companyName, line) {
+  const expected = meaningfulNameTokens(companyName);
+  const actual = meaningfulNameTokens(line);
+  if (!expected.length || !actual.length) return false;
+  if (normalizedName(line).includes(normalizedName(companyName))) return true;
+  const matches = expected.filter((token) => actual.some((candidate) => nameTokenMatches(token, candidate))).length;
+  return matches === expected.length || (expected.length >= 2 && matches >= 2);
+}
+
 function extractVendor(lines, companies = []) {
   const companyMatch = companies.find((company) => {
-    const name = normalizedName(company.name);
-    return name && lines.some((line) => normalizedName(line).includes(name));
+    return lines.some((line) => companyAppearsInLine(company.name, line));
   });
   if (companyMatch) return { vendor: companyMatch.name, companyId: companyMatch.id };
-  const ignored = /total|invoice|receipt|statement|account|customer|address|phone|date|amount|due|www\.|https?:|\d{3,}/i;
-  const likelyVendor = (line) => {
+  const likelyVendor = (line, index) => {
     const value = String(line || '').trim();
     const words = value.split(/\s+/).filter(Boolean);
     const letters = (value.match(/[A-Za-z]/g) || []).length;
     const digitWords = words.filter((word) => /^\d+$/.test(word));
-    if (value.length < 2 || value.length > 80 || ignored.test(value) || !/[A-Za-z]{2}/.test(value)) return false;
-    if (digitWords.length || /^\d+\s/.test(value)) return false;
-    if (letters < 3 || words.length > 10) return false;
+    if (index > 5 || value.length < 3 || value.length > 60 || !/[A-Za-z]{3}/.test(value)) return false;
+    if (digitWords.length || /^\d+\s/.test(value) || /www\.|https?:|[@#$%]/i.test(value)) return false;
+    if (words.some((word) => VENDOR_NOISE.test(word.replace(/[^A-Za-z]/g, '')))) return false;
+    if (letters < 4 || words.length > 6) return false;
     return true;
   };
   const vendor = lines.find(likelyVendor) || '';
@@ -133,7 +154,7 @@ function extractBillFields(text, store = {}) {
     companyId,
     vendor,
     categoryId: extractCategoryId(lines, store.categories || []),
-    description: vendor ? `${vendor} bill` : '',
+    description: '',
     amountCents: extractAmount(lines),
     text: lines.join('\n')
   };

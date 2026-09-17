@@ -110,6 +110,11 @@ function isPairedRequest(url) {
   return pairedPhone && url.searchParams.get('token') === pairedPhone.deviceToken;
 }
 
+function createPairedCaptureSession(mode = 'current') {
+  phoneCaptureSession = { token: crypto.randomBytes(18).toString('hex'), pairedToken: pairedPhone.deviceToken, captureMode: mode === 'append' ? 'append' : mode === 'new' ? 'new' : 'current', imageData: '', expiresAt: Date.now() + 10 * 60 * 1000 };
+  return phoneCaptureSession;
+}
+
 async function phoneServerRequest(request, response) {
   const url = new URL(request.url || '/', 'http://localhost');
   if (request.method === 'OPTIONS') { response.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); response.end(); return; }
@@ -134,8 +139,19 @@ async function phoneServerRequest(request, response) {
   if (request.method === 'GET' && url.pathname === '/paired/poll') {
     if (!isPairedRequest(url)) { jsonResponse(response, 403, { ok: false, error: 'This phone is not paired with TaxMan.' }); return; }
     pairedPhone.lastSeenAt = new Date().toISOString();
-    const active = phoneCaptureSession && phoneCaptureSession.pairedToken === pairedPhone.deviceToken && Date.now() <= phoneCaptureSession.expiresAt;
-    jsonResponse(response, 200, { ok: true, computerName: 'TaxMan on this PC', captureAvailable: Boolean(active), expiresAt: active ? phoneCaptureSession.expiresAt : null });
+    const active = phoneCaptureSession && !phoneCaptureSession.imageData && phoneCaptureSession.pairedToken === pairedPhone.deviceToken && Date.now() <= phoneCaptureSession.expiresAt;
+    jsonResponse(response, 200, { ok: true, computerName: 'TaxMan on this PC', captureAvailable: Boolean(active), captureMode: active ? phoneCaptureSession.captureMode : null, expiresAt: active ? phoneCaptureSession.expiresAt : null });
+    return;
+  }
+  if (request.method === 'POST' && url.pathname === '/paired/next') {
+    if (!isPairedRequest(url)) { jsonResponse(response, 403, { ok: false, error: 'This phone is not paired with TaxMan.' }); return; }
+    try {
+      const payload = JSON.parse(await readRequestBody(request, 100000));
+      if (phoneCaptureSession && !phoneCaptureSession.imageData && Date.now() <= phoneCaptureSession.expiresAt) throw new Error('TaxMan is already ready for a photo. Open the camera on your phone.');
+      await ensurePhoneServer();
+      const session = createPairedCaptureSession(payload.mode);
+      jsonResponse(response, 200, { ok: true, captureAvailable: true, captureMode: session.captureMode, expiresAt: session.expiresAt });
+    } catch (error) { jsonResponse(response, 400, { ok: false, error: error.message }); }
     return;
   }
   if (request.method === 'POST' && url.pathname === '/paired/upload') {
@@ -145,7 +161,7 @@ async function phoneServerRequest(request, response) {
       if (!phoneCaptureSession || phoneCaptureSession.pairedToken !== pairedPhone.deviceToken || Date.now() > phoneCaptureSession.expiresAt) throw new Error('TaxMan is not currently waiting for a photo. Start capture on the PC first.');
       if (!validImageData(payload.imageData)) throw new Error('The photo could not be read. Please try again with a smaller image.');
       phoneCaptureSession.imageData = payload.imageData;
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('phone-capture:uploaded', payload.imageData);
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('phone-capture:uploaded', { imageData: payload.imageData, mode: phoneCaptureSession.captureMode || 'current' });
       jsonResponse(response, 200, { ok: true });
     } catch (error) { jsonResponse(response, 400, { ok: false, error: error.message }); }
     return;
@@ -201,9 +217,12 @@ async function startPhonePairing() {
 async function startPhoneCapture() {
   await stopPhoneCapture();
   await ensurePhoneServer();
+  if (pairedPhone) {
+    const session = createPairedCaptureSession('current');
+    return { paired: true, deviceName: pairedPhone.deviceName, captureMode: session.captureMode, expiresAt: session.expiresAt };
+  }
   const token = crypto.randomBytes(18).toString('hex');
-  phoneCaptureSession = { token, pairedToken: pairedPhone?.deviceToken || '', imageData: '', expiresAt: Date.now() + 10 * 60 * 1000 };
-  if (pairedPhone) return { paired: true, deviceName: pairedPhone.deviceName, expiresAt: phoneCaptureSession.expiresAt };
+  phoneCaptureSession = { token, pairedToken: '', captureMode: 'current', imageData: '', expiresAt: Date.now() + 10 * 60 * 1000 };
   const url = `http://${lanAddress()}:${phoneServerPort}/capture?token=${token}`;
   try {
     const qrDataUrl = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 2, width: 240 });

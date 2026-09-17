@@ -28,8 +28,16 @@ async function main() {
   const uploadResult = await upload.json();
   assert.equal(upload.ok, true);
   assert.equal(uploadResult.ok, true);
+  const next = await fetch(`${paired.baseUrl}/paired/next?token=${encodeURIComponent(paired.token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'append' }) });
+  const nextResult = await next.json();
+  assert.equal(next.ok, true);
+  assert.equal(nextResult.captureMode, 'append');
+  const nextPoll = await fetch(`${paired.baseUrl}/paired/poll?token=${encodeURIComponent(paired.token)}`);
+  const nextPollResult = await nextPoll.json();
+  assert.equal(nextPollResult.captureAvailable, true);
+  assert.equal(nextPollResult.captureMode, 'append');
   await window.webContents.executeJavaScript('window.taxLedger.unpairPhone()');
-  console.log(JSON.stringify({ oneTimeCode: true, rememberedToken: true, pairedCapture: true, photoUpload: true }));
+  console.log(JSON.stringify({ oneTimeCode: true, rememberedToken: true, pairedCapture: true, photoUpload: true, anotherPhotoMode: true }));
   window.destroy();
   app.quit();
 }

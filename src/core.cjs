@@ -118,7 +118,8 @@ function normalizeStore(input) {
       homeOfficeRelated: Boolean(transaction.homeOfficeRelated),
       paidDate: cleanText(transaction.paidDate),
       notes: cleanText(transaction.notes),
-      receiptImageData: isReceiptImageData(transaction.receiptImageData) ? transaction.receiptImageData : '',
+      receiptImages: normalizeReceiptImages(transaction),
+      receiptImageData: normalizeReceiptImages(transaction)[0] || '',
       createdAt: cleanText(transaction.createdAt) || nowIso(),
       updatedAt: cleanText(transaction.updatedAt) || nowIso()
     })),
@@ -128,6 +129,12 @@ function normalizeStore(input) {
 
 function isReceiptImageData(value) {
   return typeof value === 'string' && /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(value) && value.length <= 12000000;
+}
+
+function normalizeReceiptImages(transaction = {}) {
+  const images = Array.isArray(transaction.receiptImages) ? transaction.receiptImages.filter(isReceiptImageData) : [];
+  if (!images.length && isReceiptImageData(transaction.receiptImageData)) images.push(transaction.receiptImageData);
+  return images.slice(0, 20);
 }
 
 function normalizePercent(value) {

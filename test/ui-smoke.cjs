@@ -40,6 +40,14 @@ async function main() {
     document.getElementById('transaction-amount').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await wait();
     checks.transactionSaves = document.querySelector('.data-table')?.textContent.includes('Smoke test expense');
+    document.querySelector('[data-view="dashboard"]').click(); await wait();
+    checks.dashboardTransactionEdit = Boolean(document.querySelector('[data-action="edit-transaction"]'));
+    document.getElementById('year-select').value = 'all';
+    document.getElementById('year-select').dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    checks.allYearsOption = document.getElementById('year-select')?.value === 'all' && document.body.textContent.includes('Smoke test expense');
+    document.getElementById('year-select').value = '2026';
+    document.getElementById('year-select').dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    document.querySelector('[data-view="transactions"]').click(); await wait();
     document.querySelector('[data-action="mark-paid"]')?.click(); await wait();
     checks.paymentModalShowsDetails = document.getElementById('payment-form')?.textContent.includes('Date paid') && document.body.textContent.includes('Smoke test expense');
     set('paid-date', '091026');
@@ -73,7 +81,7 @@ async function main() {
 
     await window.taxLedger.testEmitMenuAction('show-about'); await wait();
     checks.helpMenuOpens = Boolean(document.querySelector('[aria-labelledby="about-title"]'));
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.6');
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.7');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
     await window.taxLedger.testEmitMenuAction('check-for-updates'); await wait();
     checks.checkForUpdatesAction = document.body.textContent.includes('Automatic updates are available in the installed Windows version of TaxMan.');

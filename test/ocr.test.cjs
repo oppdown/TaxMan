@@ -12,7 +12,7 @@ test('bill OCR parser extracts reviewable fields and matches known companies', (
   assert.equal(result.companyId, 'company-hart-emc');
   assert.equal(result.vendor, 'Hart EMC');
   assert.equal(result.amountCents, 12345);
-  assert.equal(result.description, 'Hart EMC bill');
+  assert.equal(result.description, '');
   assert.equal(result.categoryId, 'expense-utilities');
 });
 
@@ -44,4 +44,17 @@ test('bill OCR does not promote noisy numeric text into the company or descripti
   assert.equal(result.vendor, '');
   assert.equal(result.companyId, '');
   assert.equal(result.description, '');
+});
+
+test('bill OCR ignores generic bill wording instead of inventing a description', () => {
+  const result = extractBillFields('Yea eh bill\nAmount Due $42.00');
+  assert.equal(result.vendor, '');
+  assert.equal(result.description, '');
+});
+
+test('bill OCR recognizes a known company with small OCR word errors', () => {
+  const store = { companies: [{ id: 'company-power', name: 'Georgia Power' }], categories: [] };
+  const result = extractBillFields('Georgia Poweer\nAmount Due $42.00', store);
+  assert.equal(result.vendor, 'Georgia Power');
+  assert.equal(result.companyId, 'company-power');
 });

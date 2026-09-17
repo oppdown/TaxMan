@@ -21,6 +21,7 @@
     <p>Take a clear photo of the whole bill. TaxMan will show it in the open transaction so you can review the details before saving.</p>
     <input id="photo" type="file" accept="image/*" capture="environment" hidden>
     <button class="button" id="choose" type="button">Take bill photo</button>
+    <button class="button" id="another" type="button" hidden>Send Another Photo</button>
     <img id="preview" class="preview" alt="Bill photo preview">
     <div id="status" class="status" aria-live="polite"></div>
     <p class="small">For privacy, this temporary link works only on the same local network and expires shortly.</p>
@@ -29,9 +30,11 @@
     const token = new URLSearchParams(location.search).get('token');
     const input = document.getElementById('photo');
     const choose = document.getElementById('choose');
+    const another = document.getElementById('another');
     const preview = document.getElementById('preview');
     const status = document.getElementById('status');
     choose.addEventListener('click', () => input.click());
+    another.addEventListener('click', () => input.click());
     input.addEventListener('change', async () => {
       const file = input.files?.[0];
       if (!file) return;
@@ -48,6 +51,8 @@
         if (!response.ok || !result.ok) throw new Error(result.error || 'The photo could not be sent.');
         status.className = 'status success';
         status.textContent = 'Photo received. You can return to TaxMan.';
+        another.hidden = false;
+        choose.disabled = false;
       } catch (error) { status.className = 'status error'; status.textContent = error.message || 'The photo could not be sent.'; choose.disabled = false; }
     });
     function resize(file) {

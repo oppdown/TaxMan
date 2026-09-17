@@ -22,6 +22,6 @@ contextBridge.exposeInMainWorld('taxLedger', {
   unpairPhone: () => ipcRenderer.invoke('phone-pairing:remove'),
   supportsOcr: true,
   readBillPhoto: (imageData, store) => ipcRenderer.invoke('ocr:bill', imageData, store),
-  onPhoneCaptureUploaded: (callback) => ipcRenderer.on('phone-capture:uploaded', (_event, imageData) => callback(imageData)),
+  onPhoneCaptureUploaded: (callback) => ipcRenderer.on('phone-capture:uploaded', (_event, payload) => callback(payload)),
   onMenuAction: (callback) => ipcRenderer.on('menu:action', (_event, action) => callback(action))
 });

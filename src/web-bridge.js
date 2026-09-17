@@ -33,7 +33,7 @@ if (!window.taxLedger) {
       companies: Array.isArray(source.companies) ? source.companies.map((item) => ({ id: String(item.id || cryptoId('company')), name: String(item.name || '').trim(), classification: String(item.classification || 'Other'), phone: String(item.phone || ''), email: String(item.email || ''), website: String(item.website || ''), notes: String(item.notes || ''), alwaysHomeOfficeRelated: Boolean(item.alwaysHomeOfficeRelated) })) : base.companies,
       categories: Array.isArray(source.categories) ? source.categories.map((item) => ({ id: String(item.id || cryptoId('category')), type: item.type === 'income' ? 'income' : 'expense', name: String(item.name || '').trim(), active: item.active !== false })) : base.categories,
       workTime: normalizeWorkTime(source.workTime || base.workTime),
-      transactions: Array.isArray(source.transactions) ? source.transactions.map((item) => ({ ...item, paidDate: typeof item.paidDate === 'string' ? item.paidDate : '', receiptImageData: typeof item.receiptImageData === 'string' ? item.receiptImageData : '' })) : [],
+      transactions: Array.isArray(source.transactions) ? source.transactions.map((item) => { const receiptImages = Array.isArray(item.receiptImages) ? item.receiptImages.filter((image) => typeof image === 'string').slice(0, 20) : (typeof item.receiptImageData === 'string' && item.receiptImageData ? [item.receiptImageData] : []); return { ...item, paidDate: typeof item.paidDate === 'string' ? item.paidDate : '', receiptImages, receiptImageData: receiptImages[0] || '' }; }) : [],
       updatedAt: new Date().toISOString()
     };
   }
@@ -80,6 +80,19 @@ if (!window.taxLedger) {
     if (!response.ok || !payload.ok) throw new Error(payload.error || 'The photo could not be sent to TaxMan.');
     return payload;
   }
+  async function requestAnotherPhoto(mode = 'new') {
+    const paired = loadPairedComputer();
+    if (!paired) throw new Error('Pair this phone with TaxMan first.');
+    let response;
+    try {
+      response = await fetch(`${paired.baseUrl}/paired/next?token=${encodeURIComponent(paired.token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: mode === 'append' ? 'append' : 'new' }) });
+    } catch (error) {
+      throw new Error(`TaxMan could not reach ${paired.computerName || 'your PC'}. Keep both devices on the same Wi-Fi and leave TaxMan open.`);
+    }
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) throw new Error(payload.error || 'TaxMan could not prepare the next photo.');
+    return payload;
+  }
   function csv(store, year) {
     const companies = new Map(store.companies.map((item) => [item.id, item.name]));
     const categories = new Map(store.categories.map((item) => [item.id, item.name]));
@@ -107,13 +120,14 @@ if (!window.taxLedger) {
     exportPdf: async () => { window.print(); return { canceled: true }; },
     openFolder: async () => {},
     checkForUpdates: async () => { window.open('https://taxman.speedy-star-8288.chatgpt.site/download.html', '_blank'); },
-    getVersion: async () => '0.4.6',
+    getVersion: async () => '0.4.7',
     startPhoneCapture: async () => ({ direct: true }),
     stopPhoneCapture: async () => {},
     getPairedComputer: async () => loadPairedComputer(),
     pairWithComputer,
     pollPairedCapture,
     sendPairedPhoto,
+    requestAnotherPhoto,
     unpairComputer: async () => { clearPairedComputer(); return { removed: true }; },
     readBillPhoto: async () => { throw new Error('Bill reading is available in the installed Windows version of TaxMan.'); },
     onPhoneCaptureUploaded: () => {}

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.7 - 2026-09-17
+
+- Added Edit actions to transaction rows shown on the Dashboard as well as the Transactions view.
+- Added an All years option to the year selector and applied it to dashboard totals, transaction lists, and reports.
+- Kept paired Android phones connected while TaxMan is open, with Send Another Photo and a choice between a new bill and another page of the current bill.
+- Preserved multiple bill-photo pages on transactions and removed low-confidence OCR text from the Description field.
+- Improved known-company matching when OCR makes a small spelling error.
+
 ## 0.4.6 - 2026-09-16
 
 - Fixed phone pairing when the PC has both Ethernet and Wi-Fi by preferring the Wi-Fi address and showing alternate local addresses when available.

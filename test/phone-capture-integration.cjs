@@ -18,7 +18,9 @@ async function main() {
   test.match(captureState.qr, /^data:image\/png;base64,/);
   const page = await fetch(captureUrl);
   test.equal(page.status, 200);
-  test.match(await page.text(), /Take bill photo/);
+  const pageHtml = await page.text();
+  test.match(pageHtml, /Take bill photo/);
+  test.match(pageHtml, /Send Another Photo/);
   const token = new URL(captureUrl).searchParams.get('token');
   const imageData = `data:image/jpeg;base64,${Buffer.from('integration-photo').toString('base64')}`;
   const upload = await fetch(new URL(`/upload?token=${token}`, captureUrl), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageData }) });

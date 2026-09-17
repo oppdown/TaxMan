@@ -82,7 +82,16 @@ test('receipt photos normalize and survive local store validation', () => {
   const store = normalizeStore({ companies: [{ id: 'c', name: 'Company' }], transactions: [{ id: 't', date: '2026-09-08', type: 'expense', companyId: 'c', categoryId: 'expense-other', description: 'Bill', amountCents: 1250, businessUsePercent: 100, receiptImageData: image }] });
   assert.equal(isReceiptImageData(image), true);
   assert.equal(store.transactions[0].receiptImageData, image);
+  assert.deepEqual(store.transactions[0].receiptImages, [image]);
   assert.deepEqual(validateStore(store), []);
+});
+
+test('multiple bill-photo pages normalize and preserve the first page compatibility field', () => {
+  const first = `data:image/jpeg;base64,${Buffer.from('first').toString('base64')}`;
+  const second = `data:image/jpeg;base64,${Buffer.from('second').toString('base64')}`;
+  const store = normalizeStore({ companies: [{ id: 'c', name: 'Company' }], transactions: [{ id: 't', date: '2026-09-08', type: 'expense', companyId: 'c', categoryId: 'expense-other', description: 'Bill', amountCents: 1250, businessUsePercent: 100, receiptImages: [first, second] }] });
+  assert.deepEqual(store.transactions[0].receiptImages, [first, second]);
+  assert.equal(store.transactions[0].receiptImageData, first);
 });
 
 test('paid date normalizes, persists, and validates independently from bill date', () => {
