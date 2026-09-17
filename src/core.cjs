@@ -119,7 +119,7 @@ function normalizeStore(input) {
       categoryId: cleanText(transaction.categoryId),
       description: cleanText(transaction.description),
       amountCents: Number.isInteger(transaction.amountCents) ? transaction.amountCents : Math.round(Number(transaction.amount || 0) * 100),
-      businessUsePercent: transaction.type === 'income' ? null : normalizePercent(transaction.businessUsePercent ?? 100),
+      businessUsePercent: transaction.type === 'income' ? null : normalizePercent(transaction.businessUsePercent ?? 0),
       homeOfficeRelated: Boolean(transaction.homeOfficeRelated),
       paidDate: cleanText(transaction.paidDate),
       notes: cleanText(transaction.notes),
@@ -181,7 +181,7 @@ function isValidTaxDate(value) {
 
 function businessAmountCents(transaction) {
   if (transaction.type !== 'expense') return 0;
-  return Math.round(transaction.amountCents * normalizePercent(transaction.businessUsePercent ?? 100) / 100);
+  return Math.round(transaction.amountCents * normalizePercent(transaction.businessUsePercent ?? 0) / 100);
 }
 
 function transactionsForYear(store, year) {

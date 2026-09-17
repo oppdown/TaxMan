@@ -1,4 +1,4 @@
-# TaxMan 0.4.9 human release test
+# TaxMan 0.4.10 human release test
 
 ## What is ready
 
@@ -15,7 +15,7 @@ Android data is stored on the Android device and does not synchronize with the W
 
 ## Windows test
 
-1. Double-click `dist/TaxMan-0.4.9-Setup.exe` on a Windows 10/11 x64 machine. Confirm Windows presents its normal permission prompt automatically, without using **Run as administrator**. Also launch `dist/TaxMan-0.4.9-Portable.exe` from a separate folder.
+1. Double-click `dist/TaxMan-0.4.10-Setup.exe` on a Windows 10/11 x64 machine. Confirm Windows presents its normal permission prompt automatically, without using **Run as administrator**. Also launch `dist/TaxMan-0.4.10-Portable.exe` from a separate folder.
 2. If upgrading from TaxMan 0.2.x, confirm the existing records appear immediately after launch. Create an expense with a date, company, category, description, amount, business-use percentage, and notes. Close and reopen TaxMan; confirm the row and totals remain.
 3. Open an expense and choose **Take with phone**. Put the PC and phone on the same Wi-Fi, scan the displayed QR code with the phone camera, allow camera/photo access, take a clear bill photo, and confirm the preview returns to TaxMan. Also verify the displayed address works when entered manually.
 4. Attach a bill photo and use the **75%**, **100%**, **150%**, and **200%** zoom controls. Confirm the image remains readable and scrollable at each level. Choose **Read reference text**. Confirm only a saved-company match can update the company field; date, amount, category, and description remain exactly as entered. Select text in the reference panel and use **Copy all text**.
@@ -49,5 +49,5 @@ For each failure, send: platform and OS version, device model, the exact step, w
 - A decision between sideloaded APK distribution and Google Play.
 - For Google Play: the developer account, final app listing text/screenshots, privacy-policy URL, and a release/upload keystore kept outside the repository.
 - At least one real Android phone for camera, permission, back-button, rotation, and persistence testing.
-- Android pairing in 0.4.9 keeps the Windows review-and-save workflow authoritative; OCR is reference-only and never fills financial fields automatically.
+- Android pairing in 0.4.10 keeps the Windows review-and-save workflow authoritative; OCR is reference-only and never fills financial fields automatically. Confirm a new expense starts at 0% business use and only changes when you enter a value or use the calculator. Existing transactions retain their saved percentage.
 - Confirm a bill showing both **Previous payment** and **Due date** suggests the due date, not the historical payment date. Compact formats such as 051726 should also be interpreted correctly when labeled.

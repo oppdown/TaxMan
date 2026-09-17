@@ -71,6 +71,12 @@ test('normalization accepts valid dates in other years and derives tax year', ()
   assert.equal(calculateSummary(store, 2025).incomeCents, 0);
 });
 
+test('missing business-use percentage defaults safely to zero', () => {
+  const store = normalizeStore({ companies: [{ id: 'c', name: 'Company' }], transactions: [{ id: 't', date: '2026-09-08', type: 'expense', companyId: 'c', categoryId: 'expense-other', description: 'Bill', amountCents: 100 }] });
+  assert.equal(store.transactions[0].businessUsePercent, 0);
+  assert.equal(businessAmountCents(store.transactions[0]), 0);
+});
+
 test('validation rejects impossible calendar dates', () => {
   const store = normalizeStore({ companies: [{ id: 'c', name: 'Company' }], transactions: [{ id: 't', date: '2025-02-31', type: 'income', companyId: 'c', categoryId: 'income-other', amountCents: 100 }] });
   assert.ok(validateStore(store).some((error) => error.includes('Invalid transaction date')));

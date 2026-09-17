@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.10 - 2026-09-17
+
+- New expense transactions now start at 0% business use so TaxMan never assumes a deduction percentage.
+- Existing saved business-use percentages remain unchanged, and users can still enter a percentage or use the work-time calculator.
+
 ## 0.4.9 - 2026-09-17
 
 - Changed bill OCR to reference-only: it no longer fills the transaction date, amount, category, or description.

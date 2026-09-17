@@ -2,7 +2,7 @@
 
 ![TaxMan icon](src/assets/taxman-icon.png)
 
-Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.9 keeps bill photos and conservative saved-company matching while making OCR reference-only and adding selectable photo zoom.
+Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.10 keeps bill photos and conservative saved-company matching while making OCR reference-only, adding selectable photo zoom, and starting new expense records at 0% business use.
 
 ## Use
 

@@ -97,7 +97,7 @@ if (!window.taxLedger) {
     const companies = new Map(store.companies.map((item) => [item.id, item.name]));
     const categories = new Map(store.categories.map((item) => [item.id, item.name]));
     const headers = ['Date', 'Income/Expense', 'Company/source', 'Category', 'Description', 'Amount', 'Business use %', 'Allocated business amount', 'Home office related', 'Notes'];
-    const rows = store.transactions.filter((item) => item.taxYear === Number(year)).map((item) => [item.date, item.type === 'income' ? 'Income' : 'Expense', companies.get(item.companyId) || 'Unknown company', categories.get(item.categoryId) || 'Unknown category', item.description, ((item.amountCents || 0) / 100).toFixed(2), item.businessUsePercent ?? '', (((item.amountCents || 0) * Number(item.businessUsePercent ?? (item.type === 'expense' ? 100 : 0)) / 100) / 100).toFixed(2), item.homeOfficeRelated ? 'Yes' : 'No', item.notes]);
+    const rows = store.transactions.filter((item) => item.taxYear === Number(year)).map((item) => [item.date, item.type === 'income' ? 'Income' : 'Expense', companies.get(item.companyId) || 'Unknown company', categories.get(item.categoryId) || 'Unknown category', item.description, ((item.amountCents || 0) / 100).toFixed(2), item.businessUsePercent ?? '', (((item.amountCents || 0) * Number(item.businessUsePercent ?? 0) / 100) / 100).toFixed(2), item.homeOfficeRelated ? 'Yes' : 'No', item.notes]);
     return [headers, ...rows].map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n') + '\r\n';
   }
   function chooseJsonFile() {
@@ -120,7 +120,7 @@ if (!window.taxLedger) {
     exportPdf: async () => { window.print(); return { canceled: true }; },
     openFolder: async () => {},
     checkForUpdates: async () => { window.open('https://taxman.speedy-star-8288.chatgpt.site/download.html', '_blank'); },
-    getVersion: async () => '0.4.9',
+    getVersion: async () => '0.4.10',
     startPhoneCapture: async () => ({ direct: true }),
     stopPhoneCapture: async () => {},
     getPairedComputer: async () => loadPairedComputer(),
