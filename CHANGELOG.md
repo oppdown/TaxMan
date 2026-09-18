@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.16 - 2026-09-18
+
+- Added Reports & Backup storage controls for unfinished-form close behavior, automatic snapshot retention, and manual backup reminders.
+- Added live sizes for the current ledger, recovery backup, backup folder, and total workspace.
+- Added bounded timestamped backup snapshots with automatic pruning.
+- Added date-aware transaction search, including compact dates such as `050526`.
+
 ## 0.4.15 - 2026-09-18
 
 - Added paid amount tracking separate from the billed amount, with a required explanation for differences.

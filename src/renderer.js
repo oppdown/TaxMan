@@ -2,7 +2,8 @@
 
 const TAX_YEAR = 2025;
 const NEW_COMPANY = '__create__';
-const state = { store: null, workspace: { configured: false, available: false, path: '' }, view: 'dashboard', selectedYear: 2025, transactionDraft: null, phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, companionLastSent: false, companionAppendNext: false, pendingPhonePhoto: null, paymentModal: null, workUseModal: false, receiptEditor: null, companionImageEditor: null, cropDrag: null, descriptionModal: false, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, receiptZoom: 1, appVersion: '0.4.15', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
+const DEFAULT_STORAGE_SETTINGS = { closeBehavior: 'ask', backupRetention: 7, backupReminderDays: 30, lastManualBackupAt: '' };
+const state = { store: null, workspace: { configured: false, available: false, path: '', storage: {}, storageSettings: { ...DEFAULT_STORAGE_SETTINGS } }, view: 'dashboard', selectedYear: 2025, transactionDraft: null, phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, companionLastSent: false, companionAppendNext: false, pendingPhonePhoto: null, paymentModal: null, workUseModal: false, receiptEditor: null, companionImageEditor: null, cropDrag: null, descriptionModal: false, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, receiptZoom: 1, appVersion: '0.4.16', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
 let companionPollTimer;
 let pairingPollTimer;
 let qrScannerStream;
@@ -13,6 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.taxLedger.onMenuAction) window.taxLedger.onMenuAction((action) => handleAction(action));
   if (window.taxLedger.onPhoneCaptureUploaded) window.taxLedger.onPhoneCaptureUploaded((imageData) => handlePhoneCaptureUploaded(imageData));
   if (window.taxLedger.onUpdateStatus) window.taxLedger.onUpdateStatus((status) => handleUpdateStatus(status));
+  if (window.taxLedger.onCloseRequested) window.taxLedger.onCloseRequested(() => handleCloseRequest());
   try { state.workspace = await window.taxLedger.getWorkspace?.() || state.workspace; state.store = await window.taxLedger.loadStore(); state.selectedYear = bestYearForStore(state.store, state.store.taxYear || 2025); state.appVersion = await window.taxLedger.getVersion(); if (window.taxLedger.isMobileCompanion) { state.companionComputer = await window.taxLedger.getPairedComputer(); startCompanionPolling(); } render(); }
   catch (error) { renderFatal(error); }
 });
@@ -34,6 +36,7 @@ function bindEvents() {
     if (formId === 'payment-form') { event.preventDefault(); await savePayment(new FormData(event.target)); }
     if (formId === 'work-use-form') { event.preventDefault(); await applyWorkUse(new FormData(event.target)); }
     if (formId === 'description-form') { event.preventDefault(); await saveDescription(new FormData(event.target)); }
+    if (formId === 'storage-settings-form') { event.preventDefault(); await saveStorageSettings(new FormData(event.target)); }
   });
   document.addEventListener('change', (event) => {
     if (event.target.id === 'year-select') { state.selectedYear = event.target.value === 'all' ? 'all' : Number(event.target.value); render(); }
@@ -218,6 +221,34 @@ async function chooseWorkspace() {
   } catch (error) { toast(error.message || 'Workspace folder could not be set.', true); }
 }
 
+async function handleCloseRequest() {
+  if (!state.transactionDraft) { await window.taxLedger.confirmClose(); return; }
+  const behavior = state.workspace.storageSettings?.closeBehavior || DEFAULT_STORAGE_SETTINGS.closeBehavior;
+  if (behavior === 'discard') { state.transactionDraft = null; await window.taxLedger.confirmClose(); return; }
+  if (behavior === 'save') {
+    const form = document.getElementById('transaction-form');
+    if (form && await saveTransaction(new FormData(form))) { await window.taxLedger.confirmClose(); return; }
+  }
+  if (window.confirm('A transaction form is still open. Close TaxMan and discard those unsaved form changes?')) {
+    state.transactionDraft = null;
+    await window.taxLedger.confirmClose();
+  }
+}
+
+async function saveStorageSettings(form) {
+  try {
+    const settings = {
+      closeBehavior: String(form.get('closeBehavior') || DEFAULT_STORAGE_SETTINGS.closeBehavior),
+      backupRetention: Number(form.get('backupRetention')),
+      backupReminderDays: Number(form.get('backupReminderDays')),
+      lastManualBackupAt: state.workspace.storageSettings?.lastManualBackupAt || ''
+    };
+    state.workspace = await window.taxLedger.setStorageSettings(settings);
+    toast('Storage settings saved.');
+    render();
+  } catch (error) { toast(error.message || 'Storage settings could not be saved.', true); }
+}
+
 function navigateTo(view) {
   state.view = view;
   state.openMenu = null;
@@ -291,7 +322,7 @@ function renderTransactions() {
   const filtered = filteredTransactions();
   const categories = [...state.store.categories].filter((category) => category.active).sort((a, b) => a.name.localeCompare(b.name));
   return `<section class="panel"><div class="panel-header"><div><h2>${selectedYearLabel()} transaction ledger</h2><p>One clear record for every income and business-related expense.</p></div><div class="report-actions"><button class="secondary-button" data-action="show-add-income">＋ Income</button><button class="primary-button" data-action="show-add">＋ Expense</button></div></div>
-    <div class="panel-body"><div class="filters"><input id="transaction-search" type="search" placeholder="Search company, description, or notes" value="${escapeAttr(state.search)}"><select id="type-filter"><option value="all" ${state.typeFilter === 'all' ? 'selected' : ''}>All types</option><option value="income" ${state.typeFilter === 'income' ? 'selected' : ''}>Income</option><option value="expense" ${state.typeFilter === 'expense' ? 'selected' : ''}>Expense</option></select><select id="category-filter"><option value="all">All categories</option>${categories.map((category) => `<option value="${escapeAttr(category.id)}" ${state.categoryFilter === category.id ? 'selected' : ''}>${escapeHtml(category.name)}</option>`).join('')}</select><span class="muted">${filtered.length} of ${transactionsForYear(state.store, state.selectedYear).length} entries</span></div></div>${filtered.length ? transactionTable(filtered, true) : emptyState('No matching transactions', 'Try clearing a filter or add a new entry.')}</section>`;
+    <div class="panel-body"><div class="filters"><input id="transaction-search" type="search" placeholder="Search company, description, notes, or date (e.g. 050526)" value="${escapeAttr(state.search)}"><select id="type-filter"><option value="all" ${state.typeFilter === 'all' ? 'selected' : ''}>All types</option><option value="income" ${state.typeFilter === 'income' ? 'selected' : ''}>Income</option><option value="expense" ${state.typeFilter === 'expense' ? 'selected' : ''}>Expense</option></select><select id="category-filter"><option value="all">All categories</option>${categories.map((category) => `<option value="${escapeAttr(category.id)}" ${state.categoryFilter === category.id ? 'selected' : ''}>${escapeHtml(category.name)}</option>`).join('')}</select><span class="muted">${filtered.length} of ${transactionsForYear(state.store, state.selectedYear).length} entries</span></div></div>${filtered.length ? transactionTable(filtered, true) : emptyState('No matching transactions', 'Try clearing a filter or add a new entry.')}</section>`;
 }
 
 function renderPaymentModal() {
@@ -371,11 +402,32 @@ function renderCompanies() {
 
 function categoryList(categories) { return categories.length ? `<div>${categories.sort((a, b) => a.name.localeCompare(b.name)).map((category) => `<div class="list-item"><div><strong class="${category.active ? '' : 'muted'}">${escapeHtml(category.name)}</strong><span>${category.active ? 'Available in transaction forms' : 'Inactive · existing entries are retained'}</span></div><button class="icon-button" data-action="toggle-category" data-id="${escapeAttr(category.id)}">${category.active ? 'Deactivate' : 'Activate'}</button></div>`).join('')}</div>` : '<p class="muted">No categories.</p>'; }
 
+function formatBytes(value) {
+  const bytes = Number(value) || 0;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function backupReminderMarkup(settings) {
+  const days = Number(settings.backupReminderDays) || 0;
+  if (!days) return '';
+  const last = settings.lastManualBackupAt ? new Date(settings.lastManualBackupAt) : null;
+  const overdue = !last || Number.isNaN(last.getTime()) || Date.now() - last.getTime() >= days * 86400000;
+  if (!overdue) return '';
+  return `<div class="notice backup-reminder"><strong>Backup reminder:</strong> ${last ? `Your last manual JSON backup was more than ${days} days ago.` : 'You have not created a manual JSON backup yet.'} Use <strong>Create JSON backup</strong> to keep a copy somewhere outside this workspace.</div>`;
+}
+
 function renderReports() {
   const summary = calculateSummary(state.store, state.selectedYear);
+  const settings = { ...DEFAULT_STORAGE_SETTINGS, ...(state.workspace.storageSettings || {}) };
+  const storage = state.workspace.storage || {};
   const reportNotices = [state.lastPdfPath ? `<div class="notice success" style="margin-top:15px">PDF saved to <strong>${escapeHtml(state.lastPdfPath)}</strong> <button class="icon-button" data-action="open-folder" data-path="${escapeAttr(state.lastPdfPath)}">Show in folder</button></div>` : '', state.lastCsvPath ? `<div class="notice success" style="margin-top:15px">CSV saved to <strong>${escapeHtml(state.lastCsvPath)}</strong> <button class="icon-button" data-action="open-folder" data-path="${escapeAttr(state.lastCsvPath)}">Show in folder</button></div>` : ''].join('');
   const backupNotice = state.lastBackupPath ? `<div class="notice success" style="margin-top:15px">Backup saved to <strong>${escapeHtml(state.lastBackupPath)}</strong> <button class="icon-button" data-action="open-folder" data-path="${escapeAttr(state.lastBackupPath)}">Show in folder</button></div>` : '';
-  return `<div class="grid-2"><section class="panel"><div class="panel-header"><div><h2>${selectedYearLabel()} tax-preparer report</h2><p>Summary totals followed by a spreadsheet-style transaction ledger.</p></div></div><div class="panel-body"><div class="report-actions"><button class="primary-button" data-action="export-pdf">Export PDF report</button><button class="secondary-button" data-action="export-csv">Export CSV ledger</button></div>${reportNotices}<p class="report-note" style="margin-top:20px"><strong>Important:</strong> The report shows recorded amounts and your entered business-use percentages. It does not decide what is deductible or complete a tax return.</p></div></section><section class="panel"><div class="panel-header"><div><h2>Backup and restore</h2><p>Keep a copy somewhere safe before sharing your report.</p></div></div><div class="panel-body"><div class="report-actions"><button class="secondary-button" data-action="backup-json">Create JSON backup</button><button class="secondary-button" data-action="restore-json">Restore JSON backup</button></div>${backupNotice}<p class="muted" style="margin-top:18px">The app also keeps a previous local copy automatically when records are saved. Backups contain your companies, categories, and transactions.</p></div></section></div>
+  const lastBackup = settings.lastManualBackupAt ? new Date(settings.lastManualBackupAt).toLocaleString('en-US') : 'None yet';
+  return `<div class="grid-2"><section class="panel"><div class="panel-header"><div><h2>${selectedYearLabel()} tax-preparer report</h2><p>Summary totals followed by a spreadsheet-style transaction ledger.</p></div></div><div class="panel-body"><div class="report-actions"><button class="primary-button" data-action="export-pdf">Export PDF report</button><button class="secondary-button" data-action="export-csv">Export CSV ledger</button></div>${reportNotices}<p class="report-note" style="margin-top:20px"><strong>Important:</strong> The report shows recorded amounts and your entered business-use percentages. It does not decide what is deductible or complete a tax return.</p></div></section><section class="panel"><div class="panel-header"><div><h2>Backup and restore</h2><p>Keep a copy somewhere safe before sharing your report.</p></div></div><div class="panel-body"><div class="report-actions"><button class="secondary-button" data-action="backup-json">Create JSON backup</button><button class="secondary-button" data-action="restore-json">Restore JSON backup</button></div>${backupNotice}<p class="muted" style="margin-top:18px">TaxMan keeps one recovery copy automatically when records are saved. Your companies, categories, transactions, and bill photos are included.</p></div></section></div>
+  <section class="panel storage-panel" style="margin-top:20px"><div class="panel-header"><div><h2>Storage &amp; backups</h2><p>See what this workspace uses and control automatic cleanup.</p></div><button class="secondary-button" data-action="open-workspace">Open workspace folder</button></div><div class="panel-body"><div class="cards storage-cards">${metric('Current ledger', formatBytes(storage.currentBytes), 'data.json', 'accent')}${metric('Recovery backup', formatBytes(storage.recoveryBytes), 'data.backup.json', 'green')}${metric('Backup folder', formatBytes(storage.backupFolderBytes), `${storage.backupFileCount || 0} saved snapshot${storage.backupFileCount === 1 ? '' : 's'}`, 'orange')}${metric('Workspace folder', formatBytes(storage.workspaceBytes), `${storage.workspaceFileCount || 0} files total`, 'purple')}</div>${backupReminderMarkup(settings)}<form id="storage-settings-form" class="storage-settings"><div class="field"><label for="close-behavior">When TaxMan closes with an open form</label><select id="close-behavior" name="closeBehavior"><option value="ask" ${settings.closeBehavior === 'ask' ? 'selected' : ''}>Ask before discarding changes</option><option value="save" ${settings.closeBehavior === 'save' ? 'selected' : ''}>Save a complete transaction automatically</option><option value="discard" ${settings.closeBehavior === 'discard' ? 'selected' : ''}>Discard open form changes automatically</option></select><small>Saved transactions are already written immediately. This controls only an unfinished form.</small></div><div class="field"><label for="backup-retention">Automatic snapshot retention</label><select id="backup-retention" name="backupRetention"><option value="0" ${Number(settings.backupRetention) === 0 ? 'selected' : ''}>Off — keep only the recovery backup</option><option value="3" ${Number(settings.backupRetention) === 3 ? 'selected' : ''}>Keep 3 snapshots</option><option value="7" ${Number(settings.backupRetention) === 7 ? 'selected' : ''}>Keep 7 snapshots</option><option value="30" ${Number(settings.backupRetention) === 30 ? 'selected' : ''}>Keep 30 snapshots</option><option value="90" ${Number(settings.backupRetention) === 90 ? 'selected' : ''}>Keep 90 snapshots</option></select><small>Snapshots use names such as TaxMan-backup-20260918-123456-123.json and are pruned automatically.</small></div><div class="field"><label for="backup-reminder-days">Manual backup reminder</label><select id="backup-reminder-days" name="backupReminderDays"><option value="0" ${Number(settings.backupReminderDays) === 0 ? 'selected' : ''}>Off</option><option value="30" ${Number(settings.backupReminderDays) === 30 ? 'selected' : ''}>Every 30 days</option><option value="60" ${Number(settings.backupReminderDays) === 60 ? 'selected' : ''}>Every 60 days</option><option value="90" ${Number(settings.backupReminderDays) === 90 ? 'selected' : ''}>Every 90 days</option></select><small>Last manual backup: ${escapeHtml(lastBackup)}</small></div><div class="form-actions"><button type="submit" class="primary-button">Save storage settings</button></div></form></div></section>
   <section class="panel" style="margin-top:20px"><div class="panel-header"><div><h2>Report preview</h2><p>These figures will appear in the PDF summary.</p></div></div><div class="panel-body"><div class="cards" style="margin-bottom:0">${metric('Gross income', money(summary.incomeCents), '', 'accent')}${metric('All expenses', money(summary.expenseCents), '', 'orange')}${metric('Allocated expenses', money(summary.allocatedExpenseCents), '', 'green')}${metric('Home office allocated', money(summary.homeOfficeAllocatedCents), '', 'purple')}</div></div></section>`;
 }
 
@@ -824,13 +876,14 @@ async function saveTransaction(form) {
   if (!form.get('description')?.trim()) errors.push('Add a short description.');
   if (!Number.isInteger(amountCents) || amountCents <= 0) errors.push('Enter an amount greater than $0.00.');
   if (type === 'expense' && (!Number.isFinite(percent) || percent < 0 || percent > 100)) errors.push('Business use must be between 0% and 100%.');
-  if (errors.length) { toast(errors[0], true); return; }
+  if (errors.length) { toast(errors[0], true); return false; }
   const existing = state.transactionDraft.id ? state.store.transactions.find((transaction) => transaction.id === state.transactionDraft.id) : null;
   const receiptImages = getReceiptImages(state.transactionDraft);
   const transaction = { id: existing?.id || `transaction-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, taxYear: transactionYear, date, type, companyId: String(form.get('companyId')), categoryId: String(form.get('categoryId')), description: String(form.get('description')).trim(), amountCents, businessUsePercent: type === 'expense' ? Math.round(percent * 100) / 100 : null, homeOfficeRelated: type === 'expense' && form.get('homeOfficeRelated') === 'on', paidDate: existing?.paidDate || state.transactionDraft.paidDate || '', paidAmountCents: existing?.paidAmountCents ?? state.transactionDraft.paidAmountCents ?? null, paidDifferenceNote: existing?.paidDifferenceNote || state.transactionDraft.paidDifferenceNote || '', convenienceFee: Boolean(existing?.convenienceFee ?? state.transactionDraft.convenienceFee), notes: String(form.get('notes') || '').trim(), receiptImages, receiptImageData: receiptImages[0] || '', createdAt: existing?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
   if (existing) state.store.transactions = state.store.transactions.map((item) => item.id === existing.id ? transaction : item); else state.store.transactions.push(transaction);
-  try { await persist(); } catch (error) { toast(error.message || 'Transaction could not be saved.', true); return; }
+  try { await persist(); } catch (error) { toast(error.message || 'Transaction could not be saved.', true); return false; }
   state.transactionDraft = null; state.selectedYear = transactionYear; toast(existing ? 'Transaction updated.' : 'Transaction saved.'); render();
+  return true;
 }
 
 async function deleteTransaction(idValue) {
@@ -962,7 +1015,14 @@ async function saveDescription(form) {
 
 async function toggleCategory(idValue) { const category = findCategory(idValue); if (!category) return; category.active = !category.active; try { await persist(); } catch (error) { toast(error.message || 'Category could not be updated.', true); return; } toast(category.active ? 'Category activated.' : 'Category deactivated.'); render(); }
 
-async function persist() { state.store = await window.taxLedger.saveStore(state.store); }
+async function refreshWorkspace() {
+  if (window.taxLedger.refreshWorkspace) {
+    const workspace = await window.taxLedger.refreshWorkspace();
+    if (workspace) state.workspace = workspace;
+  }
+}
+
+async function persist() { state.store = await window.taxLedger.saveStore(state.store); await refreshWorkspace(); }
 
 async function saveLedger() {
   try { await persist(); toast('Ledger saved locally.'); }
@@ -970,7 +1030,16 @@ async function saveLedger() {
 }
 
 async function exportFile(kind) {
-  try { const result = kind === 'pdf' ? await window.taxLedger.exportPdf(state.store, state.selectedYear) : kind === 'csv' ? await window.taxLedger.exportCsv(state.store, state.selectedYear) : await window.taxLedger.exportJson(state.store); if (!result.canceled) { if (kind === 'pdf') state.lastPdfPath = result.path; else if (kind === 'csv') state.lastCsvPath = result.path; else state.lastBackupPath = result.path; toast(`${kind.toUpperCase()} saved.`); render(); } } catch (error) { toast(error.message || 'Export failed.', true); }
+  try {
+    const result = kind === 'pdf' ? await window.taxLedger.exportPdf(state.store, state.selectedYear) : kind === 'csv' ? await window.taxLedger.exportCsv(state.store, state.selectedYear) : await window.taxLedger.exportJson(state.store);
+    if (!result.canceled) {
+      if (kind === 'pdf') state.lastPdfPath = result.path;
+      else if (kind === 'csv') state.lastCsvPath = result.path;
+      else { state.lastBackupPath = result.path; await refreshWorkspace(); }
+      toast(`${kind.toUpperCase()} saved.`);
+      render();
+    }
+  } catch (error) { toast(error.message || 'Export failed.', true); }
 }
 
 async function restoreJson() {
@@ -1006,7 +1075,17 @@ function handleUpdateStatus(status) {
   else if (status.status === 'downloaded') toast(status.message);
 }
 
-function filteredTransactions() { const search = state.search.toLowerCase(); return [...transactionsForYear(state.store, state.selectedYear)].filter((transaction) => { const company = findCompany(transaction.companyId)?.name || ''; const matchesSearch = !search || [company, transaction.description, transaction.notes].some((value) => value.toLowerCase().includes(search)); return (state.typeFilter === 'all' || transaction.type === state.typeFilter) && (state.categoryFilter === 'all' || transaction.categoryId === state.categoryFilter) && matchesSearch; }).sort((a, b) => b.date.localeCompare(a.date)); }
+function transactionSearchValues(transaction) {
+  const dates = [transaction.date, transaction.paidDate].filter(Boolean).flatMap((value) => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value));
+    return match ? [value, `${match[2]}/${match[3]}/${match[1]}`, `${match[2]}${match[3]}${match[1].slice(-2)}`, `${match[2]}${match[3]}${match[1]}`] : [String(value)];
+  });
+  const company = findCompany(transaction.companyId)?.name || '';
+  const category = findCategory(transaction.categoryId)?.name || '';
+  return [company, category, transaction.description, transaction.notes, transaction.paidDifferenceNote, ...dates].map((value) => String(value || '').toLowerCase());
+}
+
+function filteredTransactions() { const search = state.search.trim().toLowerCase(); return [...transactionsForYear(state.store, state.selectedYear)].filter((transaction) => { const matchesSearch = !search || transactionSearchValues(transaction).some((value) => value.includes(search)); return (state.typeFilter === 'all' || transaction.type === state.typeFilter) && (state.categoryFilter === 'all' || transaction.categoryId === state.categoryFilter) && matchesSearch; }).sort((a, b) => b.date.localeCompare(a.date)); }
 function companyOptions(selected) { return `<option value="">Choose a company/source</option>${[...state.store.companies].sort((a, b) => a.name.localeCompare(b.name)).map((company) => `<option value="${escapeAttr(company.id)}" ${company.id === selected ? 'selected' : ''}>${escapeHtml(company.name)}${company.alwaysHomeOfficeRelated ? ' · home office default' : ''}</option>`).join('')}<option value="${NEW_COMPANY}">＋ Create new company/source…</option>`; }
 function categoryOptions(type, selected) { const categories = state.store.categories.filter((category) => category.type === type && (category.active || category.id === selected)).sort((a, b) => a.name.localeCompare(b.name)); return `<option value="">Choose a category</option>${categories.map((category) => `<option value="${escapeAttr(category.id)}" ${category.id === selected ? 'selected' : ''}>${escapeHtml(category.name)}</option>`).join('')}`; }
 function findCompany(idValue) { return state.store.companies.find((company) => company.id === idValue); }

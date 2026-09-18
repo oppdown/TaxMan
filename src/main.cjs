@@ -21,6 +21,7 @@ const PAIRING_FILE = 'paired-phone.json';
 const PHONE_SERVER_PORT = Number(process.env.TAXMAN_PHONE_PORT) || 38741;
 const STABLE_USER_DATA_DIRECTORY = 'TaxMan';
 const LEGACY_USER_DATA_DIRECTORIES = ['tax-ledger-2025'];
+const DEFAULT_STORAGE_SETTINGS = { closeBehavior: 'ask', backupRetention: 7, backupReminderDays: 30, lastManualBackupAt: '' };
 let mainWindow;
 let phoneCaptureServer;
 let phoneCaptureSession;
@@ -31,6 +32,8 @@ let updateCheckInProgress = false;
 let updatePromptOpen = false;
 let ocrWorkerPromise;
 let configuredWorkspacePath = '';
+let storageSettings = { ...DEFAULT_STORAGE_SETTINGS };
+let allowWindowClose = false;
 
 function dataPath() { return path.join(app.getPath('userData'), DATA_FILE); }
 function backupPath() { return path.join(app.getPath('userData'), BACKUP_FILE); }
@@ -39,6 +42,72 @@ function activeDataPath() { return configuredWorkspacePath ? path.join(configure
 function activeBackupPath() { return configuredWorkspacePath ? path.join(configuredWorkspacePath, BACKUP_FILE) : backupPath(); }
 function pairingPath() { return path.join(app.getPath('userData'), PAIRING_FILE); }
 function legacyDataPaths() { return LEGACY_USER_DATA_DIRECTORIES.flatMap((directory) => [path.join(app.getPath('appData'), directory, DATA_FILE), path.join(app.getPath('appData'), directory, BACKUP_FILE)]); }
+
+function normalizeStorageSettings(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const closeBehavior = ['ask', 'save', 'discard'].includes(source.closeBehavior) ? source.closeBehavior : DEFAULT_STORAGE_SETTINGS.closeBehavior;
+  const retention = Number(source.backupRetention);
+  const reminder = Number(source.backupReminderDays);
+  return {
+    closeBehavior,
+    backupRetention: [0, 3, 7, 30, 90].includes(retention) ? retention : DEFAULT_STORAGE_SETTINGS.backupRetention,
+    backupReminderDays: [0, 30, 60, 90].includes(reminder) ? reminder : DEFAULT_STORAGE_SETTINGS.backupReminderDays,
+    lastManualBackupAt: typeof source.lastManualBackupAt === 'string' ? source.lastManualBackupAt : ''
+  };
+}
+
+function timestampedBackupName(date = new Date()) {
+  const pad = (value, length = 2) => String(value).padStart(length, '0');
+  return `TaxMan-backup-${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}-${pad(date.getMilliseconds(), 3)}.json`;
+}
+
+async function directoryStats(directoryPath) {
+  let bytes = 0;
+  let fileCount = 0;
+  try {
+    const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = path.join(directoryPath, entry.name);
+      if (entry.isDirectory()) {
+        const nested = await directoryStats(entryPath);
+        bytes += nested.bytes;
+        fileCount += nested.fileCount;
+      } else {
+        try { const info = await fs.stat(entryPath); bytes += info.size; fileCount += 1; } catch { /* ignore files removed while measuring */ }
+      }
+    }
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  return { bytes, fileCount };
+}
+
+async function storageStats() {
+  const currentPath = activeDataPath();
+  const recoveryPath = activeBackupPath();
+  const backupFolderPath = path.join(path.dirname(recoveryPath), 'backups');
+  const sizeOf = async (filePath) => { try { return (await fs.stat(filePath)).size; } catch (error) { if (error.code === 'ENOENT') return 0; throw error; } };
+  const currentBytes = await sizeOf(currentPath);
+  const recoveryBytes = await sizeOf(recoveryPath);
+  const backupFolder = await directoryStats(backupFolderPath);
+  const workspaceFolder = await directoryStats(path.dirname(currentPath));
+  return { currentPath, currentBytes, recoveryPath, recoveryBytes, backupFolderPath, backupFolderBytes: backupFolder.bytes, backupFileCount: backupFolder.fileCount, workspaceBytes: workspaceFolder.bytes, workspaceFileCount: workspaceFolder.fileCount };
+}
+
+async function pruneBackupSnapshots() {
+  const backupFolderPath = path.join(path.dirname(activeBackupPath()), 'backups');
+  if (storageSettings.backupRetention <= 0) {
+    try {
+      const entries = await fs.readdir(backupFolderPath, { withFileTypes: true });
+      for (const entry of entries) if (entry.isFile() && /^TaxMan-backup-\d{8}-\d{6}-\d{3}\.json$/i.test(entry.name)) await fs.rm(path.join(backupFolderPath, entry.name), { force: true });
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    return;
+  }
+  try {
+    const entries = (await fs.readdir(backupFolderPath, { withFileTypes: true }))
+      .filter((entry) => entry.isFile() && /^TaxMan-backup-\d{8}-\d{6}-\d{3}\.json$/i.test(entry.name))
+      .sort((a, b) => b.name.localeCompare(a.name));
+    for (const entry of entries.slice(storageSettings.backupRetention)) await fs.rm(path.join(backupFolderPath, entry.name), { force: true });
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
+}
 
 function lanAddresses() {
   const interfaces = os.networkInterfaces();
@@ -335,7 +404,15 @@ async function writeStore(store) {
   const targetDataPath = activeDataPath();
   const targetBackupPath = activeBackupPath();
   await fs.mkdir(path.dirname(targetDataPath), { recursive: true });
-  try { await fs.copyFile(targetDataPath, targetBackupPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  try {
+    await fs.copyFile(targetDataPath, targetBackupPath);
+    if (storageSettings.backupRetention > 0) {
+      const backupFolderPath = path.join(path.dirname(targetBackupPath), 'backups');
+      await fs.mkdir(backupFolderPath, { recursive: true });
+      await fs.copyFile(targetDataPath, path.join(backupFolderPath, timestampedBackupName()));
+      await pruneBackupSnapshots();
+    }
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
   const temp = `${targetDataPath}.tmp`;
   await fs.writeFile(temp, JSON.stringify({ ...normalized, updatedAt: new Date().toISOString() }, null, 2), 'utf8');
   await fs.rename(temp, targetDataPath);
@@ -347,22 +424,25 @@ async function readWorkspaceConfig() {
     const value = JSON.parse(await fs.readFile(workspaceConfigPath(), 'utf8'));
     const candidate = typeof value?.path === 'string' ? value.path.trim() : '';
     if (candidate) configuredWorkspacePath = path.resolve(candidate);
+    storageSettings = normalizeStorageSettings(value?.storageSettings);
   } catch (error) { if (error.code !== 'ENOENT') console.warn('TaxMan could not read its workspace setting.', error.message); }
 }
 
 async function workspaceState() {
-  if (!configuredWorkspacePath) return { configured: false, available: false, path: '', dataPath: dataPath(), backupPath: backupPath() };
+  const storage = await storageStats();
+  const settings = { ...storageSettings };
+  if (!configuredWorkspacePath) return { configured: false, available: false, path: '', dataPath: dataPath(), backupPath: backupPath(), storage, storageSettings: settings };
   try {
     const info = await fs.stat(configuredWorkspacePath);
     const available = info.isDirectory();
-    return { configured: true, available, path: configuredWorkspacePath, dataPath: activeDataPath(), backupPath: activeBackupPath() };
-  } catch { return { configured: true, available: false, path: configuredWorkspacePath, dataPath: activeDataPath(), backupPath: activeBackupPath() }; }
+    return { configured: true, available, path: configuredWorkspacePath, dataPath: activeDataPath(), backupPath: activeBackupPath(), storage, storageSettings: settings };
+  } catch { return { configured: true, available: false, path: configuredWorkspacePath, dataPath: activeDataPath(), backupPath: activeBackupPath(), storage, storageSettings: settings }; }
 }
 
 async function writeWorkspaceConfig(folderPath) {
   await fs.mkdir(app.getPath('userData'), { recursive: true });
   const temp = `${workspaceConfigPath()}.tmp`;
-  await fs.writeFile(temp, JSON.stringify({ path: folderPath, updatedAt: new Date().toISOString() }, null, 2), 'utf8');
+  await fs.writeFile(temp, JSON.stringify({ path: folderPath, storageSettings, updatedAt: new Date().toISOString() }, null, 2), 'utf8');
   await fs.rename(temp, workspaceConfigPath());
 }
 
@@ -402,6 +482,13 @@ function registerIpc() {
   ipcMain.handle('store:load', () => readStore());
   ipcMain.handle('store:save', (_event, store) => writeStore(store));
   ipcMain.handle('workspace:get', () => workspaceState());
+  ipcMain.handle('workspace:storage-settings', async (_event, value) => {
+    storageSettings = normalizeStorageSettings(value);
+    await pruneBackupSnapshots();
+    await writeWorkspaceConfig(configuredWorkspacePath);
+    return workspaceState();
+  });
+  ipcMain.handle('workspace:refresh', () => workspaceState());
   ipcMain.handle('workspace:choose', () => chooseWorkspace());
   ipcMain.handle('store:import', async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'], filters: [{ name: 'TaxMan backup', extensions: ['json'] }] });
@@ -416,6 +503,8 @@ function registerIpc() {
     const result = await saveDialog('taxman-backup.json', [{ name: 'JSON backup', extensions: ['json'] }]);
     if (result.canceled || !result.filePath) return { canceled: true };
     await fs.writeFile(result.filePath, JSON.stringify(normalizeStore(store), null, 2), 'utf8');
+    storageSettings = normalizeStorageSettings({ ...storageSettings, lastManualBackupAt: new Date().toISOString() });
+    await writeWorkspaceConfig(configuredWorkspacePath);
     return { canceled: false, path: result.filePath };
   });
   ipcMain.handle('store:export-csv', async (_event, store, year) => {
@@ -444,10 +533,20 @@ function registerIpc() {
   ipcMain.handle('phone-pairing:get', () => publicPairedPhone());
   ipcMain.handle('phone-pairing:remove', async () => { pairedPhone = null; phonePairingSession = null; await fs.rm(pairingPath(), { force: true }); if (!phoneCaptureSession) await closePhoneServer(); return { removed: true }; });
   ipcMain.handle('ocr:bill', (_event, imageData, store) => readBillPhoto(imageData, store));
+  ipcMain.handle('app:confirm-close', () => {
+    allowWindowClose = true;
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+    return { closed: true };
+  });
 }
 
 function createWindow() {
   mainWindow = new BrowserWindow({ width: 1440, height: 940, minWidth: 1080, minHeight: 720, backgroundColor: '#eef3f8', title: 'TaxMan', icon: path.join(__dirname, 'assets', 'taxman-icon.png'), webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false } });
+  mainWindow.on('close', (event) => {
+    if (allowWindowClose) return;
+    event.preventDefault();
+    mainWindow.webContents.send('app:close-requested');
+  });
   Menu.setApplicationMenu(Menu.buildFromTemplate(createApplicationMenuTemplate(sendMenuAction)));
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 }

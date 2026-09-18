@@ -84,6 +84,9 @@ async function main() {
     document.getElementById('year-select').value = '2026';
     document.getElementById('year-select').dispatchEvent(new Event('change', { bubbles: true })); await wait();
     document.querySelector('[data-view="transactions"]').click(); await wait();
+    set('transaction-search', '090826'); await wait();
+    checks.dateSearchWorks = document.body.textContent.includes('Smoke test expense') && document.getElementById('transaction-search')?.value === '090826';
+    set('transaction-search', ''); await wait();
     document.querySelector('[data-action="mark-paid"]')?.click(); await wait();
     checks.paymentModalShowsDetails = document.getElementById('payment-form')?.textContent.includes('Date paid') && document.body.textContent.includes('Smoke test expense');
     checks.paymentModalSupportsDifference = Boolean(document.getElementById('paid-amount')) && Boolean(document.getElementById('convenience-fee')) && Boolean(document.getElementById('paid-difference-note'));
@@ -120,7 +123,7 @@ async function main() {
 
     await window.taxLedger.testEmitMenuAction('show-about'); await wait();
     checks.helpMenuOpens = Boolean(document.querySelector('[aria-labelledby="about-title"]'));
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.15');
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.16');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
     await window.taxLedger.testEmitMenuAction('show-shortcuts'); await wait();
     checks.shortcutsUseClearRows = document.querySelectorAll('.shortcut-row').length === 7
@@ -134,6 +137,10 @@ async function main() {
     checks.nativeViewActionWorks = document.getElementById('page-title').textContent === 'Reports & Backup';
 
     checks.reportActionsPresent = ['export-pdf', 'export-csv', 'backup-json', 'restore-json'].every((action) => Boolean(document.querySelector('[data-action="' + action + '"]')));
+    checks.storagePanelShowsSizes = document.body.textContent.includes('Current ledger') && document.body.textContent.includes('Recovery backup') && document.body.textContent.includes('Backup folder') && Boolean(document.getElementById('storage-settings-form'));
+    set('backup-retention', '3');
+    document.getElementById('storage-settings-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait();
+    checks.storageSettingsSave = document.body.textContent.includes('Storage settings saved.') || document.getElementById('backup-retention')?.value === '3';
     document.querySelector('[data-action="export-pdf"]').click(); await wait();
     checks.pdfNoticeStaysWithReport = document.body.textContent.includes('PDF saved to test-report.pdf') && !document.querySelector('[data-action="backup-json"]').closest('.panel').textContent.includes('test-report.pdf');
     document.querySelector('[data-action="backup-json"]').click(); await wait();

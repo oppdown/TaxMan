@@ -2,7 +2,7 @@
 
 ![TaxMan icon](src/assets/taxman-icon.png)
 
-Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.15 keeps bill photos and conservative saved-company matching while recording paid-amount differences, convenience fees, and independently draggable crop edges.
+Local-first ledger for preparing income and expenditure records for a tax preparer. Version 0.4.16 keeps bill photos and conservative saved-company matching while adding storage controls, workspace size readings, and date-aware transaction search.
 
 ## Use
 
