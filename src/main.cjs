@@ -12,6 +12,7 @@ const { buildReportHtml, normalizeStore, validateStore, serializeCsv } = require
 const { createApplicationMenuTemplate } = require('./menu.cjs');
 const { loadStoreFromFiles } = require('./store-file.cjs');
 const { extractBillFields } = require('./ocr.cjs');
+const { describeUpdateError } = require('./update-errors.cjs');
 const { createWorker } = require('tesseract.js');
 
 const DATA_FILE = 'data.json';
@@ -312,6 +313,13 @@ function sendUpdateStatus(status, message, details = {}) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('app:update-status', { status, message, ...details });
 }
 
+function sendUpdateError(error, fallback = 'TaxMan could not check for updates.') {
+  const failure = describeUpdateError(error, fallback);
+  if (failure.rawMessage) console.warn(`[${failure.code}] ${failure.rawMessage}`);
+  sendUpdateStatus('error', failure.message, { errorCode: failure.code });
+  return failure;
+}
+
 function configureAutoUpdater() {
   if (process.platform !== 'win32') return;
   autoUpdater.autoDownload = false;
@@ -337,7 +345,7 @@ function configureAutoUpdater() {
         await autoUpdater.downloadUpdate();
       } else sendUpdateStatus('available', `TaxMan ${info.version} is available whenever you are ready.`, { version: info.version });
     } catch (error) {
-      sendUpdateStatus('error', error.message || 'The TaxMan update could not be downloaded.');
+      sendUpdateError(error, 'The TaxMan update could not be downloaded.');
     } finally { updatePromptOpen = false; }
   });
   autoUpdater.on('download-progress', (progress) => sendUpdateStatus('downloading', `Downloading the TaxMan update… ${Math.round(progress.percent)}%`));
@@ -355,7 +363,7 @@ function configureAutoUpdater() {
     });
     if (choice.response === 0) autoUpdater.quitAndInstall();
   });
-  autoUpdater.on('error', (error) => sendUpdateStatus('error', error.message || 'TaxMan could not check for updates.'));
+  autoUpdater.on('error', (error) => sendUpdateError(error));
 }
 
 async function checkForUpdates() {
@@ -366,9 +374,8 @@ async function checkForUpdates() {
     await autoUpdater.checkForUpdates();
     return { status: 'checking', message: 'Checking for a TaxMan update…' };
   } catch (error) {
-    const message = error.message || 'TaxMan could not check for updates.';
-    sendUpdateStatus('error', message);
-    return { status: 'error', message };
+    const failure = sendUpdateError(error);
+    return { status: 'error', message: failure.message, code: failure.code };
   } finally { updateCheckInProgress = false; }
 }
 

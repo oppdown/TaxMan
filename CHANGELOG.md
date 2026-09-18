@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.17 - 2026-09-18
+
+- Restored the Windows updater metadata in the unpacked distribution so Help > Check for Updates can reach the published GitHub release feed.
+- Replaced raw updater filesystem and network failures with actionable `TAXMAN-UPDATE-*` support codes and safer user-facing guidance.
+
 ## 0.4.16 - 2026-09-18
 
 - Added Reports & Backup storage controls for unfinished-form close behavior, automatic snapshot retention, and manual backup reminders.
