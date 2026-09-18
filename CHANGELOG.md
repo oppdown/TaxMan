@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.18 - 2026-09-18
+
+- Added a streamlined “Back to all transactions” button at the top of the transaction entry and edit view.
+- Kept the updater’s `TAXMAN-UPDATE-*` error codes and clearer recovery guidance.
+
 ## 0.4.17 - 2026-09-18
 
 - Restored the Windows updater metadata in the unpacked distribution so Help > Check for Updates can reach the published GitHub release feed.

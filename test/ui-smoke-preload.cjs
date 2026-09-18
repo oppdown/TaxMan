@@ -28,7 +28,7 @@ contextBridge.exposeInMainWorld('taxLedger', {
   refreshWorkspace: async () => workspaceState,
   setStorageSettings: async (settings) => { workspaceState.storageSettings = { ...workspaceState.storageSettings, ...settings }; return workspaceState; },
   chooseWorkspace: async () => ({ canceled: true }),
-  getVersion: async () => '0.4.16',
+  getVersion: async () => '0.4.18',
   onMenuAction: (callback) => { menuActionCallback = callback; },
   testEmitMenuAction: async (action) => menuActionCallback?.(action)
 });

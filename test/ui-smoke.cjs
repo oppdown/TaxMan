@@ -97,6 +97,10 @@ async function main() {
     checks.paymentStatusPersists = document.querySelector('.data-table')?.textContent.includes('Paid') && document.querySelector('.data-table')?.textContent.includes('09/10/2026') && document.querySelector('.data-table')?.textContent.includes('fee');
     checks.compactDateSelectsYear = document.getElementById('year-select')?.value === '2026' && document.body.textContent.includes('09/08/2026');
     document.querySelector('[data-action="edit-transaction"]')?.click(); await wait();
+    checks.backToAllTransactionsButton = document.querySelector('[data-action="cancel-form"]')?.textContent.includes('Back to all transactions') === true;
+    document.querySelector('[data-action="cancel-form"]')?.click(); await wait();
+    checks.backToAllTransactionsReturnsToLedger = Boolean(document.querySelector('.data-table')) && !document.getElementById('transaction-form');
+    document.querySelector('[data-action="edit-transaction"]')?.click(); await wait();
     document.querySelector('[data-action="calculate-business-use"]')?.click(); await wait();
     checks.workUseCalculatorOpens = document.getElementById('work-use-form')?.textContent.includes('Calculated business use');
     checks.workUseCalculatorShows33 = document.getElementById('work-use-percent')?.textContent.includes('33.33%');
@@ -123,7 +127,7 @@ async function main() {
 
     await window.taxLedger.testEmitMenuAction('show-about'); await wait();
     checks.helpMenuOpens = Boolean(document.querySelector('[aria-labelledby="about-title"]'));
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.16');
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.18');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
     await window.taxLedger.testEmitMenuAction('show-shortcuts'); await wait();
     checks.shortcutsUseClearRows = document.querySelectorAll('.shortcut-row').length === 7
