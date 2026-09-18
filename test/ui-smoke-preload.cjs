@@ -21,7 +21,11 @@ contextBridge.exposeInMainWorld('taxLedger', {
   openFolder: async () => {},
   checkForUpdates: async () => ({ status: 'unavailable', message: 'Automatic updates are available in the installed Windows version of TaxMan.' }),
   readBillPhoto: async () => ({ date: '2026-09-16', companyId: 'company-theitsupportcenter', categoryId: 'expense-other', description: 'Smoke bill', amountCents: 1234, text: 'Smoke Company\n09/16/2026\nTOTAL $12.34' }),
-  getVersion: async () => '0.4.10',
+  startPhoneCapture: async () => ({ url: 'http://127.0.0.1:38741/capture?token=smoke', qrDataUrl: '', expiresAt: Date.now() + 600000 }),
+  stopPhoneCapture: async () => {},
+  getWorkspace: async () => ({ configured: true, available: true, path: 'test-workspace' }),
+  chooseWorkspace: async () => ({ canceled: true }),
+  getVersion: async () => '0.4.15',
   onMenuAction: (callback) => { menuActionCallback = callback; },
   testEmitMenuAction: async (action) => menuActionCallback?.(action)
 });

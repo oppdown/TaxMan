@@ -16,6 +16,7 @@ const { createWorker } = require('tesseract.js');
 
 const DATA_FILE = 'data.json';
 const BACKUP_FILE = 'data.backup.json';
+const WORKSPACE_CONFIG_FILE = 'workspace.json';
 const PAIRING_FILE = 'paired-phone.json';
 const PHONE_SERVER_PORT = Number(process.env.TAXMAN_PHONE_PORT) || 38741;
 const STABLE_USER_DATA_DIRECTORY = 'TaxMan';
@@ -29,9 +30,13 @@ let phoneServerPort = PHONE_SERVER_PORT;
 let updateCheckInProgress = false;
 let updatePromptOpen = false;
 let ocrWorkerPromise;
+let configuredWorkspacePath = '';
 
 function dataPath() { return path.join(app.getPath('userData'), DATA_FILE); }
 function backupPath() { return path.join(app.getPath('userData'), BACKUP_FILE); }
+function workspaceConfigPath() { return path.join(app.getPath('userData'), WORKSPACE_CONFIG_FILE); }
+function activeDataPath() { return configuredWorkspacePath ? path.join(configuredWorkspacePath, DATA_FILE) : dataPath(); }
+function activeBackupPath() { return configuredWorkspacePath ? path.join(configuredWorkspacePath, BACKUP_FILE) : backupPath(); }
 function pairingPath() { return path.join(app.getPath('userData'), PAIRING_FILE); }
 function legacyDataPaths() { return LEGACY_USER_DATA_DIRECTORIES.flatMap((directory) => [path.join(app.getPath('appData'), directory, DATA_FILE), path.join(app.getPath('appData'), directory, BACKUP_FILE)]); }
 
@@ -314,8 +319,8 @@ async function readBillPhoto(imageData, store) {
 
 async function readStore() {
   const store = await loadStoreFromFiles({
-    currentPath: dataPath(),
-    fallbackPaths: [backupPath(), ...legacyDataPaths()],
+    currentPath: activeDataPath(),
+    fallbackPaths: [activeBackupPath(), dataPath(), backupPath(), ...legacyDataPaths()],
     normalizeStore,
     validateStore,
     migrate: (legacyStore) => writeStore(legacyStore)
@@ -327,12 +332,66 @@ async function writeStore(store) {
   const normalized = normalizeStore(store);
   const errors = validateStore(normalized);
   if (errors.length) throw new Error(errors.join('\n'));
-  await fs.mkdir(app.getPath('userData'), { recursive: true });
-  try { await fs.copyFile(dataPath(), backupPath()); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  const temp = `${dataPath()}.tmp`;
+  const targetDataPath = activeDataPath();
+  const targetBackupPath = activeBackupPath();
+  await fs.mkdir(path.dirname(targetDataPath), { recursive: true });
+  try { await fs.copyFile(targetDataPath, targetBackupPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  const temp = `${targetDataPath}.tmp`;
   await fs.writeFile(temp, JSON.stringify({ ...normalized, updatedAt: new Date().toISOString() }, null, 2), 'utf8');
-  await fs.rename(temp, dataPath());
+  await fs.rename(temp, targetDataPath);
   return normalized;
+}
+
+async function readWorkspaceConfig() {
+  try {
+    const value = JSON.parse(await fs.readFile(workspaceConfigPath(), 'utf8'));
+    const candidate = typeof value?.path === 'string' ? value.path.trim() : '';
+    if (candidate) configuredWorkspacePath = path.resolve(candidate);
+  } catch (error) { if (error.code !== 'ENOENT') console.warn('TaxMan could not read its workspace setting.', error.message); }
+}
+
+async function workspaceState() {
+  if (!configuredWorkspacePath) return { configured: false, available: false, path: '', dataPath: dataPath(), backupPath: backupPath() };
+  try {
+    const info = await fs.stat(configuredWorkspacePath);
+    const available = info.isDirectory();
+    return { configured: true, available, path: configuredWorkspacePath, dataPath: activeDataPath(), backupPath: activeBackupPath() };
+  } catch { return { configured: true, available: false, path: configuredWorkspacePath, dataPath: activeDataPath(), backupPath: activeBackupPath() }; }
+}
+
+async function writeWorkspaceConfig(folderPath) {
+  await fs.mkdir(app.getPath('userData'), { recursive: true });
+  const temp = `${workspaceConfigPath()}.tmp`;
+  await fs.writeFile(temp, JSON.stringify({ path: folderPath, updatedAt: new Date().toISOString() }, null, 2), 'utf8');
+  await fs.rename(temp, workspaceConfigPath());
+}
+
+async function chooseWorkspace() {
+  const result = await dialog.showOpenDialog(mainWindow, { defaultPath: configuredWorkspacePath || app.getPath('documents'), properties: ['openDirectory', 'createDirectory'] });
+  if (result.canceled || !result.filePaths[0]) return { canceled: true };
+  const selectedPath = path.resolve(result.filePaths[0]);
+  await fs.mkdir(selectedPath, { recursive: true });
+  const selectedDataPath = path.join(selectedPath, DATA_FILE);
+  const selectedBackupPath = path.join(selectedPath, BACKUP_FILE);
+  let selectedStore;
+  let selectedDataExists = true;
+  try {
+    const existing = await fs.readFile(selectedDataPath, 'utf8');
+    selectedStore = normalizeStore(JSON.parse(existing));
+    const errors = validateStore(selectedStore);
+    if (errors.length) throw new Error(errors.join('\n'));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    selectedDataExists = false;
+    selectedStore = await readStore();
+    const serialized = JSON.stringify({ ...selectedStore, updatedAt: new Date().toISOString() }, null, 2);
+    await fs.writeFile(selectedDataPath, serialized, 'utf8');
+  }
+  if (!selectedDataExists) await fs.writeFile(selectedBackupPath, JSON.stringify({ ...selectedStore, updatedAt: new Date().toISOString() }, null, 2), 'utf8');
+  else { try { await fs.access(selectedBackupPath); } catch (error) { if (error.code === 'ENOENT') await fs.writeFile(selectedBackupPath, JSON.stringify({ ...selectedStore, updatedAt: new Date().toISOString() }, null, 2), 'utf8'); else throw error; } }
+  configuredWorkspacePath = selectedPath;
+  await writeWorkspaceConfig(selectedPath);
+  return { canceled: false, store: selectedStore, workspace: await workspaceState() };
 }
 
 async function saveDialog(defaultName, filters) {
@@ -342,6 +401,8 @@ async function saveDialog(defaultName, filters) {
 function registerIpc() {
   ipcMain.handle('store:load', () => readStore());
   ipcMain.handle('store:save', (_event, store) => writeStore(store));
+  ipcMain.handle('workspace:get', () => workspaceState());
+  ipcMain.handle('workspace:choose', () => chooseWorkspace());
   ipcMain.handle('store:import', async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'], filters: [{ name: 'TaxMan backup', extensions: ['json'] }] });
     if (result.canceled || !result.filePaths[0]) return { canceled: true };
@@ -394,6 +455,7 @@ function createWindow() {
 app.whenReady().then(async () => {
   app.setPath('userData', path.join(app.getPath('appData'), STABLE_USER_DATA_DIRECTORY));
   app.setAppUserModelId('com.localtaxledger.ledger2025');
+  await readWorkspaceConfig();
   await loadPairedPhone();
   registerIpc();
   createWindow();

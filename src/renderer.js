@@ -2,7 +2,7 @@
 
 const TAX_YEAR = 2025;
 const NEW_COMPANY = '__create__';
-const state = { store: null, view: 'dashboard', selectedYear: 2025, transactionDraft: null, phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, companionLastSent: false, companionAppendNext: false, pendingPhonePhoto: null, paymentModal: null, workUseModal: false, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, receiptZoom: 1, appVersion: '0.4.10', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
+const state = { store: null, workspace: { configured: false, available: false, path: '' }, view: 'dashboard', selectedYear: 2025, transactionDraft: null, phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, companionLastSent: false, companionAppendNext: false, pendingPhonePhoto: null, paymentModal: null, workUseModal: false, receiptEditor: null, companionImageEditor: null, cropDrag: null, descriptionModal: false, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, receiptZoom: 1, appVersion: '0.4.15', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
 let companionPollTimer;
 let pairingPollTimer;
 let qrScannerStream;
@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.taxLedger.onMenuAction) window.taxLedger.onMenuAction((action) => handleAction(action));
   if (window.taxLedger.onPhoneCaptureUploaded) window.taxLedger.onPhoneCaptureUploaded((imageData) => handlePhoneCaptureUploaded(imageData));
   if (window.taxLedger.onUpdateStatus) window.taxLedger.onUpdateStatus((status) => handleUpdateStatus(status));
-  try { state.store = await window.taxLedger.loadStore(); state.selectedYear = bestYearForStore(state.store, state.store.taxYear || 2025); state.appVersion = await window.taxLedger.getVersion(); if (window.taxLedger.isMobileCompanion) { state.companionComputer = await window.taxLedger.getPairedComputer(); startCompanionPolling(); } render(); }
+  try { state.workspace = await window.taxLedger.getWorkspace?.() || state.workspace; state.store = await window.taxLedger.loadStore(); state.selectedYear = bestYearForStore(state.store, state.store.taxYear || 2025); state.appVersion = await window.taxLedger.getVersion(); if (window.taxLedger.isMobileCompanion) { state.companionComputer = await window.taxLedger.getPairedComputer(); startCompanionPolling(); } render(); }
   catch (error) { renderFatal(error); }
 });
 
@@ -33,12 +33,18 @@ function bindEvents() {
     if (formId === 'pair-computer-form') { event.preventDefault(); await pairComputer(new FormData(event.target)); }
     if (formId === 'payment-form') { event.preventDefault(); await savePayment(new FormData(event.target)); }
     if (formId === 'work-use-form') { event.preventDefault(); await applyWorkUse(new FormData(event.target)); }
+    if (formId === 'description-form') { event.preventDefault(); await saveDescription(new FormData(event.target)); }
   });
   document.addEventListener('change', (event) => {
     if (event.target.id === 'year-select') { state.selectedYear = event.target.value === 'all' ? 'all' : Number(event.target.value); render(); }
     if (event.target.id === 'transaction-type') {
       state.transactionDraft.type = event.target.value;
       state.transactionDraft.categoryId = '';
+      render();
+    }
+    if (event.target.id === 'transaction-description-select') {
+      captureTransactionDraftFromForm();
+      state.transactionDraft.description = event.target.value === 'Other' ? '' : event.target.value;
       render();
     }
     if (event.target.id === 'transaction-company' && event.target.value === NEW_COMPANY) {
@@ -70,7 +76,38 @@ function bindEvents() {
     if (event.target.id === 'type-filter') { state.typeFilter = event.target.value; render(); }
     if (event.target.id === 'category-filter') { state.categoryFilter = event.target.value; render(); }
     if (event.target.id === 'work-hours-per-day' || event.target.id === 'work-days-per-week') updateWorkUsePreview();
+    if (state.receiptEditor && event.target.id?.startsWith('receipt-crop-')) { const cropKey = { top: 'cropTop', right: 'cropRight', bottom: 'cropBottom', left: 'cropLeft' }[event.target.id.replace('receipt-crop-', '')]; if (cropKey) { setCropEdge(state.receiptEditor, cropKey, Number(event.target.value) || 0); updateCropEditorPreview('receipt', state.receiptEditor); } }
+    if (state.companionImageEditor && event.target.id?.startsWith('companion-crop-')) { const cropKey = { top: 'cropTop', right: 'cropRight', bottom: 'cropBottom', left: 'cropLeft' }[event.target.id.replace('companion-crop-', '')]; if (cropKey) { setCropEdge(state.companionImageEditor, cropKey, Number(event.target.value) || 0); updateCropEditorPreview('companion', state.companionImageEditor); } }
   });
+  document.addEventListener('pointerdown', (event) => {
+    const handle = event.target.closest('[data-crop-edge]');
+    if (!handle) return;
+    const kind = handle.dataset.cropEditor;
+    const editor = kind === 'companion' ? state.companionImageEditor : state.receiptEditor;
+    if (!editor) return;
+    const stage = handle.closest('[data-crop-stage]');
+    if (!stage) return;
+    event.preventDefault();
+    state.cropDrag = { kind, edge: handle.dataset.cropEdge, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, startTop: editor.cropTop, startRight: editor.cropRight, startBottom: editor.cropBottom, startLeft: editor.cropLeft, stage };
+    handle.setPointerCapture?.(event.pointerId);
+  });
+  document.addEventListener('pointermove', (event) => {
+    const drag = state.cropDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const editor = drag.kind === 'companion' ? state.companionImageEditor : state.receiptEditor;
+    if (!editor) return;
+    const rect = drag.stage.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const dx = (event.clientX - drag.startX) / rect.width * 100;
+    const dy = (event.clientY - drag.startY) / rect.height * 100;
+    const starts = { cropTop: drag.startTop, cropRight: drag.startRight, cropBottom: drag.startBottom, cropLeft: drag.startLeft };
+    const deltas = { cropTop: dy, cropRight: -dx, cropBottom: -dy, cropLeft: dx };
+    const key = { top: 'cropTop', right: 'cropRight', bottom: 'cropBottom', left: 'cropLeft' }[drag.edge];
+    if (!key) return;
+    setCropEdge(editor, key, starts[key] + deltas[key]);
+    updateCropEditorPreview(drag.kind, editor);
+  });
+  document.addEventListener('pointerup', (event) => { if (state.cropDrag?.pointerId === event.pointerId) state.cropDrag = null; });
   document.addEventListener('keydown', (event) => {
     if (event.target.id === 'transaction-category' && /^[a-z]$/i.test(event.key)) {
       const categorySelect = event.target;
@@ -83,7 +120,7 @@ function bindEvents() {
     if (event.ctrlKey && event.key.toLowerCase() === 'n') { event.preventDefault(); openTransaction('expense'); }
     else if (event.ctrlKey && event.key.toLowerCase() === 's' && state.transactionDraft) { event.preventDefault(); document.getElementById('transaction-form')?.requestSubmit(); }
     else if (event.ctrlKey && /^[1-4]$/.test(event.key)) { event.preventDefault(); state.view = ['dashboard', 'transactions', 'companies', 'reports'][Number(event.key) - 1]; state.transactionDraft = null; render(); }
-    else if (event.key === 'Escape') { if (state.qrScanner || state.paymentModal || state.workUseModal || state.companyModal || state.phoneCapture || state.phonePairing || state.companionPairing || state.aboutOpen || state.shortcutsOpen) { if (state.qrScanner) stopQrScanner(); if (state.phoneCapture) window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.phonePairing = null; state.companionPairing = false; state.companionPairingData = null; state.qrScanner = false; state.paymentModal = null; state.workUseModal = false; state.aboutOpen = false; state.shortcutsOpen = false; render(); } else if (state.transactionDraft) { state.transactionDraft = null; render(); } else if (state.openMenu) { state.openMenu = null; render(); } }
+    else if (event.key === 'Escape') { if (state.qrScanner || state.paymentModal || state.workUseModal || state.receiptEditor || state.companionImageEditor || state.descriptionModal || state.companyModal || state.phoneCapture || state.phonePairing || state.companionPairing || state.aboutOpen || state.shortcutsOpen) { if (state.qrScanner) stopQrScanner(); if (state.phoneCapture) window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.phonePairing = null; state.companionPairing = false; state.companionPairingData = null; state.qrScanner = false; state.paymentModal = null; state.workUseModal = false; state.receiptEditor = null; state.companionImageEditor = null; state.cropDrag = null; state.descriptionModal = false; state.aboutOpen = false; state.shortcutsOpen = false; render(); } else if (state.transactionDraft) { state.transactionDraft = null; render(); } else if (state.openMenu) { state.openMenu = null; render(); } }
   });
 }
 
@@ -97,12 +134,12 @@ async function handleAction(action, element) {
   if (action === 'mark-paid') { state.paymentModal = { id: element.dataset.id }; render(); }
   if (action === 'close-payment-modal') { state.paymentModal = null; render(); }
   if (action === 'unmark-paid') await unmarkPaid();
-  if (action === 'calculate-business-use') { state.workUseModal = true; render(); }
+  if (action === 'calculate-business-use') { captureTransactionDraftFromForm(); state.workUseModal = true; render(); }
   if (action === 'close-work-use-modal') { state.workUseModal = false; render(); }
   if (action === 'add-company') { state.companyModal = { editId: null, returnToTransaction: false }; render(); }
   if (action === 'edit-company') { state.companyModal = { editId: element.dataset.id, returnToTransaction: false }; render(); }
-  if (action === 'close-modal') { if (state.qrScanner) stopQrScanner(); if (state.phoneCapture) await window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.phonePairing = null; state.companionPairing = false; state.companionPairingData = null; state.qrScanner = false; state.paymentModal = null; state.workUseModal = false; state.aboutOpen = false; state.shortcutsOpen = false; render(); }
-  if (action === 'start-phone-capture') await beginPhoneCapture();
+  if (action === 'close-modal') { if (state.qrScanner) stopQrScanner(); if (state.phoneCapture) await window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.phonePairing = null; state.companionPairing = false; state.companionPairingData = null; state.qrScanner = false; state.paymentModal = null; state.workUseModal = false; state.receiptEditor = null; state.companionImageEditor = null; state.cropDrag = null; state.descriptionModal = false; state.aboutOpen = false; state.shortcutsOpen = false; render(); }
+  if (action === 'start-phone-capture') { captureTransactionDraftFromForm(); await beginPhoneCapture(); }
   if (action === 'pair-phone') await beginPhonePairing();
   if (action === 'unpair-phone') { await window.taxLedger.unpairPhone(); state.phoneCapture = null; toast('Phone pairing removed.'); render(); }
   if (action === 'pair-computer') { state.companionPairing = true; state.companionPairingData = null; render(); }
@@ -111,7 +148,6 @@ async function handleAction(action, element) {
   if (action === 'cancel-companion-pairing') { stopQrScanner(); state.qrScanner = false; state.companionPairing = false; state.companionPairingData = null; render(); }
   if (action === 'unpair-computer') { await window.taxLedger.unpairComputer(); state.companionComputer = null; state.companionRequest = null; toast('PC pairing removed.'); render(); }
   if (action === 'companion-take-photo') document.getElementById('companion-photo')?.click();
-  if (action === 'companion-send-another') await requestAnotherCompanionPhoto();
   if (action === 'use-pending-photo-current') usePendingPhonePhoto('current');
   if (action === 'use-pending-photo-new') usePendingPhonePhoto('new');
   if (action === 'discard-pending-photo') { state.pendingPhonePhoto = null; toast('The extra bill photo was discarded.'); render(); }
@@ -123,6 +159,14 @@ async function handleAction(action, element) {
   if (action === 'copy-phone-url') await copyPhoneUrl();
   if (action === 'copy-pairing-url') await copyText(state.phonePairing?.url, 'Pairing address copied.');
   if (action === 'remove-receipt-photo') { removeReceiptImage(Number(element.dataset.index)); }
+  if (action === 'edit-receipt-image') { openReceiptEditor(Number(element.dataset.index)); }
+  if (action === 'rotate-receipt-left') { rotateReceiptEditor(-90); }
+  if (action === 'rotate-receipt-right') { rotateReceiptEditor(90); }
+  if (action === 'apply-receipt-edits') await applyReceiptEdits();
+  if (action === 'rotate-companion-left') { rotateCompanionEditor(-90); }
+  if (action === 'rotate-companion-right') { rotateCompanionEditor(90); }
+  if (action === 'send-companion-photo') await sendCompanionPhoto();
+  if (action === 'add-description') { captureTransactionDraftFromForm(); state.descriptionModal = true; render(); }
   if (action === 'show-about') { state.openMenu = null; state.aboutOpen = true; render(); }
   if (action === 'show-shortcuts') { state.openMenu = null; state.shortcutsOpen = true; render(); }
   if (action === 'check-for-updates') { state.openMenu = null; const result = await window.taxLedger.checkForUpdates(); if (result?.status === 'unavailable' || result?.status === 'error') toast(result.message || 'TaxMan could not check for updates.', true); else if (result?.status === 'checking') toast(result.message || 'Checking for a TaxMan update…'); }
@@ -138,6 +182,8 @@ async function handleAction(action, element) {
   if (action === 'backup-json') await exportFile('json');
   if (action === 'restore-json') await restoreJson();
   if (action === 'open-folder') await window.taxLedger.openFolder(element.dataset.path);
+  if (action === 'open-workspace') { if (state.workspace.configured && state.workspace.available) await window.taxLedger.openFolder(state.workspace.path); else toast('Choose a workspace folder first.', true); }
+  if (action === 'choose-workspace') await chooseWorkspace();
 }
 
 function render() {
@@ -148,8 +194,28 @@ function render() {
   document.getElementById('page-title').textContent = titles[state.view];
   document.getElementById('year-eyebrow').textContent = state.selectedYear === 'all' ? 'All years' : `${state.selectedYear} tax preparation`;
   populateYearSelector();
+  document.getElementById('workspace-root').innerHTML = renderWorkspaceNotice();
   document.getElementById('view-root').innerHTML = window.taxLedger.isMobileCompanion && state.view === 'dashboard' ? renderCompanionDashboard() : state.view === 'dashboard' ? renderDashboard() : state.view === 'transactions' ? renderTransactions() : state.view === 'companies' ? renderCompanies() : renderReports();
-  document.getElementById('modal-root').innerHTML = state.pendingPhonePhoto ? renderPendingPhonePhotoModal() : state.companyModal ? renderCompanyModal() : state.phonePairing ? renderPhonePairingModal() : state.qrScanner ? renderQrScannerModal() : state.paymentModal ? renderPaymentModal() : state.workUseModal ? renderWorkUseModal() : state.companionPairing ? renderCompanionPairingModal() : state.phoneCapture ? renderPhoneCaptureModal() : state.aboutOpen ? renderAboutModal() : state.shortcutsOpen ? renderShortcutsModal() : '';
+  document.getElementById('modal-root').innerHTML = state.pendingPhonePhoto ? renderPendingPhonePhotoModal() : state.receiptEditor ? renderReceiptEditorModal() : state.companionImageEditor ? renderCompanionImageEditorModal() : state.descriptionModal ? renderDescriptionModal() : state.companyModal ? renderCompanyModal() : state.phonePairing ? renderPhonePairingModal() : state.qrScanner ? renderQrScannerModal() : state.paymentModal ? renderPaymentModal() : state.workUseModal ? renderWorkUseModal() : state.companionPairing ? renderCompanionPairingModal() : state.phoneCapture ? renderPhoneCaptureModal() : state.aboutOpen ? renderAboutModal() : state.shortcutsOpen ? renderShortcutsModal() : '';
+}
+
+function renderWorkspaceNotice() {
+  if (window.taxLedger.isMobileCompanion || (state.workspace.configured && state.workspace.available)) return '';
+  const unavailable = state.workspace.configured && !state.workspace.available;
+  return `<section class="workspace-warning" role="alert"><div><strong>${unavailable ? 'Workspace folder unavailable' : 'Create a workspace folder before entering more records'}</strong><p>${unavailable ? `TaxMan cannot reach <strong>${escapeHtml(state.workspace.path)}</strong>. Choose a new folder so saved transactions are written somewhere you can back up.` : 'TaxMan is currently using its internal app storage. Choose a local folder so your ledger and automatic backup are easy to find and protect in a disaster.'}</p></div><button type="button" class="danger-button" data-action="choose-workspace">${unavailable ? 'Choose another folder' : 'Choose workspace folder'}</button></section>`;
+}
+
+async function chooseWorkspace() {
+  captureTransactionDraftFromForm();
+  try {
+    const result = await window.taxLedger.chooseWorkspace();
+    if (result?.canceled) return;
+    if (result?.workspace) state.workspace = result.workspace;
+    if (result?.store) state.store = result.store;
+    state.selectedYear = bestYearForStore(state.store, state.store.taxYear || 2025);
+    toast(`Workspace folder set to ${state.workspace.path}.`);
+    render();
+  } catch (error) { toast(error.message || 'Workspace folder could not be set.', true); }
 }
 
 function navigateTo(view) {
@@ -157,6 +223,32 @@ function navigateTo(view) {
   state.openMenu = null;
   if (state.view !== 'transactions') state.transactionDraft = null;
   render();
+}
+
+// Transaction fields are edited in the DOM until the user saves. Keep the
+// in-progress values when an action (such as opening a modal) rerenders the
+// transaction form.
+function captureTransactionDraftFromForm() {
+  if (!state.transactionDraft) return;
+  const form = document.getElementById('transaction-form');
+  if (!form) return;
+  const formData = new FormData(form);
+  const type = String(formData.get('type') || state.transactionDraft.type || 'expense');
+  const parsedDate = parseDateInput(formData.get('date'));
+  const amountCents = parseAmount(formData.get('amount'));
+  const businessUsePercent = Number(formData.get('businessUsePercent'));
+  state.transactionDraft = {
+    ...state.transactionDraft,
+    type,
+    date: parsedDate || state.transactionDraft.date || '',
+    companyId: String(formData.get('companyId') || ''),
+    categoryId: String(formData.get('categoryId') || ''),
+    description: String(formData.get('description') || ''),
+    amountCents: Number.isInteger(amountCents) ? amountCents : 0,
+    businessUsePercent: type === 'expense' && Number.isFinite(businessUsePercent) ? businessUsePercent : (type === 'expense' ? (state.transactionDraft.businessUsePercent ?? 0) : null),
+    homeOfficeRelated: type === 'expense' && formData.get('homeOfficeRelated') === 'on',
+    notes: String(formData.get('notes') || '')
+  };
 }
 
 function populateYearSelector() {
@@ -209,7 +301,10 @@ function renderPaymentModal() {
   const category = findCategory(transaction.categoryId)?.name || 'Unknown category';
   const paid = Boolean(transaction.paidDate);
   const paidDate = transaction.paidDate || todayIso();
-  return `<div class="modal-backdrop"><section class="modal payment-modal" role="dialog" aria-modal="true" aria-labelledby="payment-title"><div class="modal-header"><div><span class="eyebrow">Payment status</span><h2 id="payment-title">${paid ? 'Update payment' : 'Mark transaction paid'}</h2></div><button class="close-button" data-action="close-payment-modal" aria-label="Close">×</button></div><div class="modal-body"><div class="payment-summary"><div><span>Company / source</span><strong>${escapeHtml(company)}</strong></div><div><span>Description</span><strong>${escapeHtml(transaction.description)}</strong></div><div><span>Amount</span><strong>${money(transaction.amountCents)}</strong></div><div><span>Bill date</span><strong>${escapeHtml(formatDateDisplay(transaction.date))}</strong></div>${transaction.type === 'expense' ? `<div><span>Category</span><strong>${escapeHtml(category)}</strong></div>` : ''}</div><form id="payment-form"><div class="field"><label class="required" for="paid-date">${paid ? 'Paid date' : 'Date paid'}</label><div class="inline-field"><input id="paid-date" name="paidDate" type="text" inputmode="numeric" autocomplete="off" placeholder="MMDDYY or MM/DD/YYYY" required value="${escapeAttr(formatDateInput(paidDate))}"><button type="button" class="secondary-button compact-button" data-action="use-paid-today">Today</button></div><small>Enter the date the payment actually cleared. The bill date stays unchanged.</small></div><div class="modal-actions"><button type="button" class="secondary-button" data-action="close-payment-modal">Cancel</button>${paid ? '<button type="button" class="danger-button" data-action="unmark-paid">Mark as unpaid</button>' : ''}<button type="submit" class="primary-button">${paid ? 'Save paid date' : 'Mark paid'}</button></div></form></div></section></div>`;
+  const paidAmount = Number.isInteger(transaction.paidAmountCents) ? transaction.paidAmountCents : transaction.amountCents;
+  const difference = paidAmount - transaction.amountCents;
+  const differenceText = difference === 0 ? 'No difference recorded' : `${difference > 0 ? 'Paid over bill' : 'Paid under bill'}: ${money(Math.abs(difference))}`;
+  return `<div class="modal-backdrop"><section class="modal payment-modal" role="dialog" aria-modal="true" aria-labelledby="payment-title"><div class="modal-header"><div><span class="eyebrow">Payment status</span><h2 id="payment-title">${paid ? 'Update payment' : 'Mark transaction paid'}</h2></div><button class="close-button" data-action="close-payment-modal" aria-label="Close">×</button></div><div class="modal-body"><div class="payment-summary"><div><span>Company / source</span><strong>${escapeHtml(company)}</strong></div><div><span>Description</span><strong>${escapeHtml(transaction.description)}</strong></div><div><span>Amount billed</span><strong>${money(transaction.amountCents)}</strong></div><div><span>Amount paid</span><strong>${money(paidAmount)}</strong></div><div><span>Paid difference</span><strong>${escapeHtml(differenceText)}</strong></div><div><span>Bill date</span><strong>${escapeHtml(formatDateDisplay(transaction.date))}</strong></div>${transaction.type === 'expense' ? `<div><span>Category</span><strong>${escapeHtml(category)}</strong></div>` : ''}</div><form id="payment-form"><div class="form-grid"><div class="field"><label class="required" for="paid-date">${paid ? 'Paid date' : 'Date paid'}</label><div class="inline-field"><input id="paid-date" name="paidDate" type="text" inputmode="numeric" autocomplete="off" placeholder="MMDDYY or MM/DD/YYYY" required value="${escapeAttr(formatDateInput(paidDate))}"><button type="button" class="secondary-button compact-button" data-action="use-paid-today">Today</button></div><small>Enter the date the payment actually cleared. The bill date stays unchanged.</small></div><div class="field"><label class="required" for="paid-amount">Amount paid</label><input id="paid-amount" name="paidAmount" inputmode="decimal" required placeholder="0.00" value="${escapeAttr((paidAmount / 100).toFixed(2))}"><small>Use the amount that actually cleared, including any fee.</small></div></div><div class="check-field"><input id="convenience-fee" name="convenienceFee" type="checkbox" ${transaction.convenienceFee ? 'checked' : ''}><label for="convenience-fee">Convenience fee included in amount paid</label></div><div class="field"><label for="paid-difference-note">Paid difference comment</label><textarea id="paid-difference-note" name="paidDifferenceNote" maxlength="240" rows="2" placeholder="e.g. Online payment convenience fee">${escapeHtml(transaction.paidDifferenceNote || '')}</textarea><small>A comment is required when the paid amount differs, unless the convenience-fee box is selected. TaxMan records the billed amount separately.</small></div><div class="modal-actions"><button type="button" class="secondary-button" data-action="close-payment-modal">Cancel</button>${paid ? '<button type="button" class="danger-button" data-action="unmark-paid">Mark as unpaid</button>' : ''}<button type="submit" class="primary-button">${paid ? 'Save payment details' : 'Mark paid'}</button></div></form></div></section></div>`;
 }
 
 function renderWorkUseModal() {
@@ -224,21 +319,25 @@ function renderTransactionForm() {
   const draft = state.transactionDraft;
   const isIncome = draft.type === 'income';
   const images = getReceiptImages(draft);
-  const photoButton = window.taxLedger.supportsPhoneCapture ? `<button type="button" class="secondary-button" data-action="start-phone-capture">${images.length ? 'Send another photo' : 'Take with phone'}</button>` : '<button type="button" class="secondary-button" data-action="take-receipt-photo">Take photo</button>';
+  const standardDescriptions = ['Electricity', 'Internet', 'Natural Gas', 'Phone', 'Water', 'Software'];
+  const descriptionPresets = [...new Set([...standardDescriptions, ...(Array.isArray(state.store.descriptions) ? state.store.descriptions : [])].map((value) => String(value || '').trim()).filter(Boolean))];
+  const selectedDescription = descriptionPresets.includes(String(draft.description || '')) ? String(draft.description) : 'Other';
+  const descriptionField = `<div class="field"><label class="required" for="transaction-description-select">Description</label><div class="description-choice-row"><select id="transaction-description-select" name="descriptionChoice">${descriptionPresets.map((option) => `<option value="${escapeAttr(option)}" ${selectedDescription === option ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}<option value="Other" ${selectedDescription === 'Other' ? 'selected' : ''}>Other</option></select><button type="button" class="secondary-button compact-button" data-action="add-description">＋ Add</button></div>${selectedDescription === 'Other' ? `<textarea id="transaction-description" name="description" required maxlength="160" rows="2" placeholder="Describe this bill or transaction">${escapeHtml(draft.description || '')}</textarea>` : `<input type="hidden" id="transaction-description" name="description" value="${escapeAttr(selectedDescription)}">`}<small>${selectedDescription === 'Other' ? 'Enter a description for this transaction.' : 'Choose the bill type that best matches this transaction.'}</small></div>`;
+  const photoButton = window.taxLedger.supportsPhoneCapture ? `<button type="button" class="secondary-button" data-action="start-phone-capture">${images.length ? 'Add page from phone' : 'Take with phone'}</button>` : '<button type="button" class="secondary-button" data-action="take-receipt-photo">Take photo</button>';
   const zoom = [0.75, 1, 1.5, 2].includes(state.receiptZoom) ? state.receiptZoom : 1;
   const zoomControls = images.length ? `<div class="receipt-view-toolbar"><span>Photo zoom</span>${[[0.75, '75%'], [1, '100%'], [1.5, '150%'], [2, '200%']].map(([value, label]) => `<button type="button" class="secondary-button compact-button ${zoom === value ? 'selected-button' : ''}" data-action="set-receipt-zoom" data-zoom="${value}" aria-pressed="${zoom === value}">${label}</button>`).join('')}</div>` : '';
-  const pagePreview = images.length ? `${zoomControls}<div class="receipt-preview receipt-pages">${images.map((image, index) => `<figure class="receipt-page"><div class="receipt-image-scroll"><img src="${escapeAttr(image)}" alt="Bill photo page ${index + 1}" style="--receipt-zoom:${zoom}"></div><figcaption>Page ${index + 1} <button type="button" class="icon-button danger-text" data-action="remove-receipt-photo" data-index="${index}">Remove</button></figcaption></figure>`).join('')}</div>` : '';
+  const pagePreview = images.length ? `${zoomControls}<div class="receipt-preview receipt-pages">${images.map((image, index) => `<figure class="receipt-page"><div class="receipt-image-scroll"><img src="${escapeAttr(image)}" alt="Bill photo page ${index + 1}" style="--receipt-zoom:${zoom}"></div><figcaption><span>Page ${index + 1}</span><span class="receipt-page-actions"><button type="button" class="icon-button" data-action="edit-receipt-image" data-index="${index}">Edit image</button><button type="button" class="icon-button danger-text" data-action="remove-receipt-photo" data-index="${index}">Remove</button></span></figcaption></figure>`).join('')}</div>` : '';
   const ocrReview = state.ocr?.text ? `<div class="ocr-review-grid"><div class="ocr-review-photo"><span class="ocr-review-label">Bill image</span><div class="receipt-image-scroll"><img src="${escapeAttr(images[0])}" alt="Bill image used for OCR reference" style="--receipt-zoom:${zoom}"></div></div><div class="ocr-review-text"><div class="ocr-review-heading"><span class="ocr-review-label">Reference text</span><button type="button" class="secondary-button compact-button" data-action="copy-ocr-text">Copy all text</button></div><pre class="ocr-text-selectable">${escapeHtml(state.ocr.text)}</pre><small>Select any text to copy it. OCR reference never changes the date, amount, category, or description.</small></div></div>` : '';
   return `<section class="panel form-panel"><div class="panel-body"><div class="form-title"><div><h2>${draft.id ? 'Edit transaction' : 'Add transaction'}</h2><p>Enter one income or expense item. Amounts are stored in U.S. dollars.</p></div><button class="icon-button" data-action="cancel-form" aria-label="Close form">✕</button></div><div class="entry-tip"><strong>Quick entry:</strong> Type dates as 090826. Ctrl+S saves, Esc cancels, and Ctrl+N starts a new expense.</div><form id="transaction-form"><div class="form-grid compact-form-grid">
     <div class="field date-field"><label class="required" for="transaction-date">Date</label><div class="inline-field"><input id="transaction-date" name="date" type="text" inputmode="numeric" autocomplete="off" placeholder="MMDDYY or MM/DD/YYYY" required value="${escapeAttr(formatDateInput(draft.date || ''))}"><button type="button" class="secondary-button compact-button" data-action="use-today">Today</button></div><small>Examples: 090826 or 09/08/2026. Any valid year is accepted.</small></div>
     <div class="field"><label class="required" for="transaction-type">Income or expense</label><select id="transaction-type" name="type"><option value="income" ${isIncome ? 'selected' : ''}>Income</option><option value="expense" ${!isIncome ? 'selected' : ''}>Expense</option></select></div>
     <div class="field"><label class="required" for="transaction-company">Company or source</label><select id="transaction-company" name="companyId" required>${companyOptions(draft.companyId)}</select><small>Choose “Create new…” to add a company without leaving this form.</small></div>
     <div class="field"><label class="required" for="transaction-category">${isIncome ? 'Income source' : 'Expense category'}</label><select id="transaction-category" name="categoryId" required>${categoryOptions(draft.type, draft.categoryId)}</select></div>
-    <div class="field"><label class="required" for="transaction-description">Description</label><input id="transaction-description" name="description" required maxlength="160" placeholder="What was this for?" value="${escapeAttr(draft.description)}"></div>
+    ${descriptionField}
     <div class="field"><label class="required" for="transaction-amount">Amount (USD)</label><input id="transaction-amount" name="amount" inputmode="decimal" required placeholder="0.00" value="${escapeAttr(draft.amountCents ? (draft.amountCents / 100).toFixed(2) : '')}"><small>Enter the full amount paid or received.</small></div>
     ${isIncome ? '' : `<div class="field"><label class="required" for="business-use">Business use</label><div class="inline-field"><input id="business-use" name="businessUsePercent" type="number" min="0" max="100" step="0.01" required value="${escapeAttr(draft.businessUsePercent ?? 0)}"><button type="button" class="secondary-button compact-button" data-action="calculate-business-use">Calculate from work time</button></div><small>Starts at 0%. Change it only when you have a supportable business-use percentage.</small></div><div class="check-field"><input id="home-office-related" name="homeOfficeRelated" type="checkbox" ${draft.homeOfficeRelated ? 'checked' : ''}><label for="home-office-related">Mark as home-office-related</label></div>`}
     <div class="field wide"><label>Bill photo${images.length > 1 ? ` · ${images.length} pages` : ''}</label><div class="photo-actions">${photoButton}<label class="secondary-button file-button">Choose photo<input id="receipt-photo" type="file" accept="image/*" capture="environment"></label>${images.length && window.taxLedger.supportsOcr ? `<button type="button" class="secondary-button" data-action="read-bill-photo" ${state.ocr?.busy ? 'disabled' : ''}>${state.ocr?.busy ? 'Reading reference text…' : 'Read reference text'}</button>` : ''}${images.length ? '<span class="photo-attached">Photo attached</span>' : '<span class="muted">Optional</span>'}</div>${pagePreview}${images.length ? `${state.ocr?.message ? `<div class="notice"><strong>${escapeHtml(state.ocr.message)}</strong></div>` : ''}${ocrReview}` : `<small>${window.taxLedger.supportsPhoneCapture ? 'Use the phone connection for a camera photo, or choose an image from this computer.' : 'Take a photo or choose an image. The bill stays on this device.'}</small>`}</div>
-    ${draft.id ? `<div class="field wide"><label>Payment status</label><div class="payment-form-row"><span class="${draft.paidDate ? 'paid-pill' : 'unpaid-pill'}">${draft.paidDate ? `Paid ${escapeHtml(formatDateDisplay(draft.paidDate))}` : 'Not marked paid'}</span><button type="button" class="secondary-button" data-action="mark-paid" data-id="${escapeAttr(draft.id)}">${draft.paidDate ? 'Update payment' : 'Mark paid'}</button></div></div>` : ''}
+    ${draft.id ? `<div class="field wide"><label>Payment status</label><div class="payment-form-row"><span class="${draft.paidDate ? 'paid-pill' : 'unpaid-pill'}">${draft.paidDate ? `Paid ${escapeHtml(formatDateDisplay(draft.paidDate))}${paymentDifferenceMarkup(draft)}` : 'Not marked paid'}</span><button type="button" class="secondary-button" data-action="mark-paid" data-id="${escapeAttr(draft.id)}">${draft.paidDate ? 'Update payment' : 'Mark paid'}</button></div></div>` : ''}
     <div class="field wide"><label for="transaction-notes">Notes</label><textarea id="transaction-notes" name="notes" maxlength="500" placeholder="Optional receipt reference or context">${escapeHtml(draft.notes)}</textarea></div>
   </div><div class="form-actions"><button type="button" class="secondary-button" data-action="cancel-form">Cancel</button><button type="submit" class="primary-button">Save transaction</button></div></form></div></section>`;
 }
@@ -248,10 +347,18 @@ function transactionTable(items, actions) {
     const company = findCompany(transaction.companyId)?.name || 'Unknown company';
     const category = findCategory(transaction.categoryId)?.name || 'Unknown category';
     const allocated = transaction.type === 'expense' ? businessAmount(transaction) : 0;
-  const paymentStatus = transaction.paidDate ? `<span class="paid-pill">Paid</span><br><span class="muted">${escapeHtml(formatDateDisplay(transaction.paidDate))}</span>` : actions ? `<button class="secondary-button compact-button" data-action="mark-paid" data-id="${escapeAttr(transaction.id)}">Mark paid</button>` : '<span class="unpaid-pill">Unpaid</span>';
+  const paymentStatus = transaction.paidDate ? `<span class="paid-pill">Paid</span><br><span class="muted">${escapeHtml(formatDateDisplay(transaction.paidDate))}${paymentDifferenceMarkup(transaction)}</span>` : actions ? `<button class="secondary-button compact-button" data-action="mark-paid" data-id="${escapeAttr(transaction.id)}">Mark paid</button>` : '<span class="unpaid-pill">Unpaid</span>';
   return `<tr><td>${escapeHtml(formatDateDisplay(transaction.date))}</td><td><span class="type-pill ${transaction.type === 'income' ? 'type-income' : 'type-expense'}">${transaction.type === 'income' ? 'Income' : 'Expense'}</span></td><td><strong>${escapeHtml(company)}</strong><br><span class="muted">${escapeHtml(category)}</span></td><td>${escapeHtml(transaction.description)}${transaction.homeOfficeRelated ? '<br><span class="tag">Home office</span>' : ''}</td><td class="money">${money(transaction.amountCents)}</td><td class="money">${transaction.type === 'expense' ? `${formatPercent(transaction.businessUsePercent)}<br><span class="muted">${money(allocated)}</span>` : '—'}</td><td class="payment-status">${paymentStatus}</td>${actions ? `<td class="row-actions"><button class="icon-button" data-action="edit-transaction" data-id="${escapeAttr(transaction.id)}" title="Edit">Edit</button><button class="icon-button danger-text" data-action="delete-transaction" data-id="${escapeAttr(transaction.id)}" title="Delete">Delete</button></td>` : ''}</tr>`;
   }).join('');
   return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Type</th><th>Company/source &amp; category</th><th>Description</th><th>Amount</th><th>Business use<br>Allocated</th><th>Payment</th>${actions ? '<th>Actions</th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function paymentDifferenceMarkup(transaction) {
+  if (!Number.isInteger(transaction?.paidAmountCents)) return '';
+  const difference = transaction.paidAmountCents - transaction.amountCents;
+  if (!difference) return '';
+  const label = `${difference > 0 ? '+' : '−'}${money(Math.abs(difference))}${transaction.convenienceFee ? ' fee' : ''}`;
+  return `<br><span class="muted payment-difference" title="${escapeAttr(transaction.paidDifferenceNote || '')}">${escapeHtml(label)}</span>`;
 }
 
 function renderCompanies() {
@@ -283,7 +390,7 @@ function renderCompanionDashboard() {
   return `<div class="companion-page">
     <section class="companion-hero"><div class="companion-hero-copy"><span class="companion-kicker">TaxMan companion</span><h2>${waiting ? 'Your PC is ready for the bill.' : 'Capture bills without typing.'}</h2><p>${waiting ? 'Take one clear photo here. TaxMan will send it directly to the open transaction on your computer.' : 'Pair this phone once, then send bill photos to TaxMan over your private Wi-Fi.'}</p><div class="companion-status ${statusClass}"><span></span>${escapeHtml(status)}</div></div><div class="companion-mark"><img src="assets/taxman-icon.png" alt=""><span>LOCAL<br>ONLY</span></div></section>
     <section class="companion-card capture-card"><div class="companion-card-heading"><div><span class="companion-label">Quick capture</span><h3>${waiting ? 'Send a bill photo' : lastSent ? 'Photo sent' : 'Ready when you are'}</h3></div><span class="companion-step">01</span></div><button class="companion-capture-button" type="button" data-action="companion-take-photo" ${waiting ? '' : 'disabled'}><span class="camera-glyph">⌾</span><span>${waiting ? 'Take photo' : lastSent ? 'Photo sent' : 'Waiting for PC'}</span></button><p class="companion-help">${waiting ? 'Keep the whole bill in frame and use good light.' : lastSent ? 'Your PC received the image. You can prepare the next one below.' : 'Start Take with phone on your PC to enable the camera.'}</p><input id="companion-photo" type="file" accept="image/*" capture="environment" hidden></section>
-    ${lastSent ? `<section class="companion-card next-photo-card"><div class="companion-card-heading"><div><span class="companion-label">Keep going</span><h3>Send another photo</h3></div><span class="companion-step">02</span></div><label class="companion-check"><input id="companion-append-page" type="checkbox" ${state.companionAppendNext ? 'checked' : ''}><span>Add the next photo to the current transaction as another page</span></label><p class="companion-help">Leave this unchecked to start a new bill. TaxMan will open the right place on your PC when the photo arrives.</p><button class="primary-button companion-wide-button" type="button" data-action="companion-send-another">Send Another Photo</button></section>` : ''}
+    ${lastSent ? `<section class="companion-card next-photo-card"><div class="companion-card-heading"><div><span class="companion-label">Photo sent</span><h3>Add more pages from the PC</h3></div><span class="companion-step">02</span></div><p class="companion-help">Your PC received this page. To add another page, choose <strong>Add page from phone</strong> in the open transaction on your PC.</p></section>` : ''}
     <section class="companion-card connection-card"><div class="companion-card-heading"><div><span class="companion-label">Your computer</span><h3>${escapeHtml(paired?.computerName || 'No PC paired')}</h3></div><span class="connection-icon">⌁</span></div>${paired ? `<p class="connection-detail"><span class="status-dot"></span>${escapeHtml(paired.deviceName || 'This phone')} is remembered by TaxMan.</p><div class="companion-actions"><button class="secondary-button" data-action="unpair-computer">Remove pairing</button><button class="secondary-button" data-view="transactions">Open ledger</button></div>` : `<p class="connection-detail">Pair once with the code shown in TaxMan on your PC. Your phone will remember the connection.</p><button class="primary-button companion-wide-button" data-action="pair-computer">Pair with PC</button>`}</section>
     <section class="companion-note"><span class="lock-glyph">◆</span><div><strong>Private by design</strong><p>Photos travel directly between this phone and your PC. They are not uploaded to a TaxMan account.</p></div></section>
   </div>`;
@@ -307,6 +414,26 @@ function renderPhonePairingModal() {
 
 function renderPendingPhonePhotoModal() {
   return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="pending-photo-title"><div class="modal-header"><div><span class="eyebrow">Photo received</span><h2 id="pending-photo-title">Where should this photo go?</h2></div></div><div class="modal-body"><p>Your phone marked this as a new bill, but a transaction is already open on the PC. Choose where to place the newest image before continuing.</p><div class="pending-photo-preview"><img src="${escapeAttr(state.pendingPhonePhoto)}" alt="Newest bill photo"></div><div class="modal-actions"><button type="button" class="secondary-button" data-action="use-pending-photo-current">Add as another page</button><button type="button" class="primary-button" data-action="use-pending-photo-new">Start new bill</button><button type="button" class="danger-button" data-action="discard-pending-photo">Discard photo</button></div></div></section></div>`;
+}
+
+function renderReceiptEditorModal() {
+  const editor = state.receiptEditor;
+  return renderImageEditorModal(editor, 'receipt', 'receipt-editor-title', 'Crop or rotate image', 'Bill image being edited', 'rotate-receipt-left', 'rotate-receipt-right', 'Apply changes', 'apply-receipt-edits', 'Cancel', 'close-modal');
+}
+
+function renderCompanionImageEditorModal() {
+  const editor = state.companionImageEditor;
+  return renderImageEditorModal(editor, 'companion', 'companion-editor-title', 'Review photo', 'Bill photo ready to send', 'rotate-companion-left', 'rotate-companion-right', 'Send this page', 'send-companion-photo', 'Discard', 'close-modal');
+}
+
+function renderImageEditorModal(editor, kind, titleId, title, alt, rotateLeftAction, rotateRightAction, confirmLabel, confirmAction, cancelLabel, cancelAction) {
+  const field = (edge, label, value) => `<label class="receipt-editor-field" for="${kind}-crop-${edge}"><span>${label}</span><input id="${kind}-crop-${edge}" type="number" min="0" max="45" step="1" value="${escapeAttr(value)}"><small>0–45%</small></label>`;
+  const cropStage = `<div class="crop-editor-stage" data-crop-stage data-crop-editor="${kind}"><img src="${escapeAttr(editor.image)}" alt="${escapeAttr(alt)}"><div class="crop-window" data-crop-window style="top:${editor.cropTop}%;right:${editor.cropRight}%;bottom:${editor.cropBottom}%;left:${editor.cropLeft}%;"><button type="button" class="crop-handle crop-handle-top" data-crop-edge="top" data-crop-editor="${kind}" aria-label="Drag top crop edge"></button><button type="button" class="crop-handle crop-handle-right" data-crop-edge="right" data-crop-editor="${kind}" aria-label="Drag right crop edge"></button><button type="button" class="crop-handle crop-handle-bottom" data-crop-edge="bottom" data-crop-editor="${kind}" aria-label="Drag bottom crop edge"></button><button type="button" class="crop-handle crop-handle-left" data-crop-edge="left" data-crop-editor="${kind}" aria-label="Drag left crop edge"></button></div></div>`;
+  return `<div class="modal-backdrop"><section class="modal receipt-editor-modal" role="dialog" aria-modal="true" aria-labelledby="${titleId}"><div class="modal-header"><div><span class="eyebrow">Bill image tools</span><h2 id="${titleId}">${title}</h2></div><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><div class="receipt-editor-preview">${cropStage}</div><div class="receipt-editor-actions"><button type="button" class="secondary-button" data-action="${rotateLeftAction}">Rotate left</button><button type="button" class="secondary-button" data-action="${rotateRightAction}">Rotate right</button><span class="muted">Rotation: ${editor.rotation}°</span></div><p class="muted">Drag any edge independently to crop that side. The original image is replaced only when you choose ${confirmLabel}.</p><div class="receipt-editor-grid">${field('top', 'Crop top', editor.cropTop)}${field('right', 'Crop right', editor.cropRight)}${field('bottom', 'Crop bottom', editor.cropBottom)}${field('left', 'Crop left', editor.cropLeft)}</div><div class="modal-actions"><button type="button" class="secondary-button" data-action="${cancelAction}">${cancelLabel}</button><button type="button" class="primary-button" data-action="${confirmAction}">${confirmLabel}</button></div></div></section></div>`;
+}
+
+function renderDescriptionModal() {
+  return `<div class="modal-backdrop"><section class="modal description-modal" role="dialog" aria-modal="true" aria-labelledby="description-title"><div class="modal-header"><div><span class="eyebrow">Common description</span><h2 id="description-title">Add a description</h2></div><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><p class="muted">Add a label you use often. It will be available in future transaction forms on this device.</p><form id="description-form"><div class="field"><label class="required" for="new-description">Description</label><input id="new-description" name="description" required maxlength="80" placeholder="e.g. Office rent"><small>Use a short, recognizable label.</small></div><div class="modal-actions"><button type="button" class="secondary-button" data-action="close-modal">Cancel</button><button type="submit" class="primary-button">Add description</button></div></form></div></section></div>`;
 }
 
 function renderCompanionPairingModal() {
@@ -413,8 +540,28 @@ function startCompanionPolling() {
 }
 
 async function handleCompanionPhoto(file) {
-  try { const imageData = await resizeReceiptImage(file); await window.taxLedger.sendPairedPhoto(imageData); state.companionRequest = { ...(state.companionRequest || {}), captureAvailable: false }; state.companionLastSent = true; toast('Bill photo sent to TaxMan.'); render(); }
+  try { const imageData = await resizeReceiptImage(file); state.companionImageEditor = { image: imageData, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 }; render(); }
   catch (error) { toast(error.message || 'The photo could not be sent.', true); }
+}
+
+function rotateCompanionEditor(degrees) {
+  if (!state.companionImageEditor) return;
+  state.companionImageEditor.rotation = (state.companionImageEditor.rotation + degrees + 360) % 360;
+  render();
+}
+
+async function sendCompanionPhoto() {
+  const editor = state.companionImageEditor;
+  if (!editor) return;
+  try {
+    const imageData = await transformReceiptImage(editor.image, editor);
+    await window.taxLedger.sendPairedPhoto(imageData);
+    state.companionImageEditor = null;
+    state.companionRequest = { ...(state.companionRequest || {}), captureAvailable: false };
+    state.companionLastSent = true;
+    toast('Bill photo sent to TaxMan.');
+    render();
+  } catch (error) { toast(error.message || 'The photo could not be sent.', true); }
 }
 
 async function requestAnotherCompanionPhoto() {
@@ -469,6 +616,88 @@ function removeReceiptImage(index) {
   render();
 }
 
+function openReceiptEditor(index) {
+  const image = getReceiptImages(state.transactionDraft)[index];
+  if (!image) return;
+  state.receiptEditor = { index, image, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 };
+  render();
+}
+
+function rotateReceiptEditor(degrees) {
+  if (!state.receiptEditor) return;
+  state.receiptEditor.rotation = (state.receiptEditor.rotation + degrees + 360) % 360;
+  render();
+}
+
+async function applyReceiptEdits() {
+  const editor = state.receiptEditor;
+  if (!editor || !state.transactionDraft) return;
+  try {
+    const image = await transformReceiptImage(editor.image, editor);
+    const images = getReceiptImages(state.transactionDraft);
+    if (!images[editor.index]) throw new Error('That bill photo is no longer available.');
+    images[editor.index] = image;
+    state.transactionDraft.receiptImages = images;
+    state.transactionDraft.receiptImageData = images[0] || '';
+    state.receiptEditor = null;
+    state.ocr = null;
+    toast('Bill image edits applied.');
+    render();
+  } catch (error) { toast(error.message || 'The bill image could not be edited.', true); }
+}
+
+function setCropEdge(editor, key, value) {
+  if (!editor || !['cropTop', 'cropRight', 'cropBottom', 'cropLeft'].includes(key)) return;
+  const opposite = { cropTop: 'cropBottom', cropRight: 'cropLeft', cropBottom: 'cropTop', cropLeft: 'cropRight' }[key];
+  const limit = Math.min(45, 90 - Number(editor[opposite] || 0));
+  editor[key] = Math.round(Math.max(0, Math.min(limit, Number(value) || 0)) * 10) / 10;
+}
+
+function updateCropEditorPreview(kind, editor) {
+  const stage = document.querySelector(`[data-crop-stage][data-crop-editor="${kind}"]`);
+  const windowElement = stage?.querySelector('[data-crop-window]');
+  if (windowElement) {
+    windowElement.style.top = `${editor.cropTop}%`;
+    windowElement.style.right = `${editor.cropRight}%`;
+    windowElement.style.bottom = `${editor.cropBottom}%`;
+    windowElement.style.left = `${editor.cropLeft}%`;
+  }
+  for (const [edge, key] of Object.entries({ top: 'cropTop', right: 'cropRight', bottom: 'cropBottom', left: 'cropLeft' })) {
+    const input = document.getElementById(`${kind}-crop-${edge}`);
+    if (input && document.activeElement !== input) input.value = String(editor[key]);
+  }
+}
+
+function transformReceiptImage(imageData, options = {}) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onerror = () => reject(new Error('The bill image could not be opened.'));
+    image.onload = () => {
+      const top = Math.max(0, Math.min(45, Number(options.cropTop) || 0)) / 100;
+      const right = Math.max(0, Math.min(45, Number(options.cropRight) || 0)) / 100;
+      const bottom = Math.max(0, Math.min(45, Number(options.cropBottom) || 0)) / 100;
+      const left = Math.max(0, Math.min(45, Number(options.cropLeft) || 0)) / 100;
+      const cropX = Math.round(image.naturalWidth * left);
+      const cropY = Math.round(image.naturalHeight * top);
+      const cropWidth = Math.max(1, Math.round(image.naturalWidth * (1 - left - right)));
+      const cropHeight = Math.max(1, Math.round(image.naturalHeight * (1 - top - bottom)));
+      const rotation = ((Number(options.rotation) || 0) % 360 + 360) % 360;
+      const outputWidth = rotation === 90 || rotation === 270 ? cropHeight : cropWidth;
+      const outputHeight = rotation === 90 || rotation === 270 ? cropWidth : cropHeight;
+      const canvas = document.createElement('canvas');
+      canvas.width = outputWidth;
+      canvas.height = outputHeight;
+      const context = canvas.getContext('2d');
+      if (rotation === 90) { context.translate(outputWidth, 0); context.rotate(Math.PI / 2); }
+      else if (rotation === 180) { context.translate(outputWidth, outputHeight); context.rotate(Math.PI); }
+      else if (rotation === 270) { context.translate(0, outputHeight); context.rotate(-Math.PI / 2); }
+      context.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+      resolve(canvas.toDataURL('image/jpeg', .84));
+    };
+    image.src = imageData;
+  });
+}
+
 function draftHasData(draft) {
   return Boolean(draft?.date || draft?.companyId || draft?.categoryId || draft?.description || draft?.amountCents || getReceiptImages(draft).length || draft?.notes);
 }
@@ -493,6 +722,7 @@ function usePendingPhonePhoto(mode) {
 }
 
 async function handlePhoneCaptureUploaded(imageData) {
+  captureTransactionDraftFromForm();
   const pairedPayload = typeof imageData !== 'string';
   const payload = pairedPayload ? imageData || {} : { imageData, mode: 'current' };
   const photo = payload.imageData;
@@ -514,6 +744,7 @@ async function handlePhoneCaptureUploaded(imageData) {
 }
 
 async function handleReceiptFile(file) {
+  captureTransactionDraftFromForm();
   try {
     appendReceiptImage(await resizeReceiptImage(file));
     state.ocr = null;
@@ -596,7 +827,7 @@ async function saveTransaction(form) {
   if (errors.length) { toast(errors[0], true); return; }
   const existing = state.transactionDraft.id ? state.store.transactions.find((transaction) => transaction.id === state.transactionDraft.id) : null;
   const receiptImages = getReceiptImages(state.transactionDraft);
-  const transaction = { id: existing?.id || `transaction-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, taxYear: transactionYear, date, type, companyId: String(form.get('companyId')), categoryId: String(form.get('categoryId')), description: String(form.get('description')).trim(), amountCents, businessUsePercent: type === 'expense' ? Math.round(percent * 100) / 100 : null, homeOfficeRelated: type === 'expense' && form.get('homeOfficeRelated') === 'on', paidDate: existing?.paidDate || state.transactionDraft.paidDate || '', notes: String(form.get('notes') || '').trim(), receiptImages, receiptImageData: receiptImages[0] || '', createdAt: existing?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const transaction = { id: existing?.id || `transaction-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, taxYear: transactionYear, date, type, companyId: String(form.get('companyId')), categoryId: String(form.get('categoryId')), description: String(form.get('description')).trim(), amountCents, businessUsePercent: type === 'expense' ? Math.round(percent * 100) / 100 : null, homeOfficeRelated: type === 'expense' && form.get('homeOfficeRelated') === 'on', paidDate: existing?.paidDate || state.transactionDraft.paidDate || '', paidAmountCents: existing?.paidAmountCents ?? state.transactionDraft.paidAmountCents ?? null, paidDifferenceNote: existing?.paidDifferenceNote || state.transactionDraft.paidDifferenceNote || '', convenienceFee: Boolean(existing?.convenienceFee ?? state.transactionDraft.convenienceFee), notes: String(form.get('notes') || '').trim(), receiptImages, receiptImageData: receiptImages[0] || '', createdAt: existing?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
   if (existing) state.store.transactions = state.store.transactions.map((item) => item.id === existing.id ? transaction : item); else state.store.transactions.push(transaction);
   try { await persist(); } catch (error) { toast(error.message || 'Transaction could not be saved.', true); return; }
   state.transactionDraft = null; state.selectedYear = transactionYear; toast(existing ? 'Transaction updated.' : 'Transaction saved.'); render();
@@ -611,14 +842,21 @@ async function deleteTransaction(idValue) {
 async function savePayment(form) {
   const paymentDate = parseDateInput(form.get('paidDate'));
   if (!paymentDate) { toast('Enter a valid paid date such as 090826 or 09/08/2026.', true); return; }
+  const paidAmountCents = parseAmount(form.get('paidAmount'));
+  if (!Number.isInteger(paidAmountCents) || paidAmountCents <= 0) { toast('Enter the amount that was actually paid.', true); return; }
   const transaction = state.store.transactions.find((item) => item.id === state.paymentModal?.id);
   if (!transaction) return;
-  const updated = { ...transaction, paidDate: paymentDate, updatedAt: new Date().toISOString() };
+  const difference = paidAmountCents - transaction.amountCents;
+  const requestedConvenienceFee = form.get('convenienceFee') === 'on';
+  const paidDifferenceNote = String(form.get('paidDifferenceNote') || '').trim();
+  if (difference !== 0 && !requestedConvenienceFee && !paidDifferenceNote) { toast('Add a comment explaining the difference, or select Convenience fee included.', true); return; }
+  if (requestedConvenienceFee && difference < 0) { toast('A convenience fee requires the amount paid to be at least the billed amount.', true); return; }
+  const updated = { ...transaction, paidDate: paymentDate, paidAmountCents, convenienceFee: requestedConvenienceFee && difference > 0, paidDifferenceNote: difference === 0 ? '' : (requestedConvenienceFee ? (paidDifferenceNote || 'Convenience fee') : paidDifferenceNote), updatedAt: new Date().toISOString() };
   state.store.transactions = state.store.transactions.map((item) => item.id === updated.id ? updated : item);
-  if (state.transactionDraft?.id === updated.id) state.transactionDraft.paidDate = paymentDate;
+  if (state.transactionDraft?.id === updated.id) { state.transactionDraft.paidDate = paymentDate; state.transactionDraft.paidAmountCents = paidAmountCents; state.transactionDraft.paidDifferenceNote = updated.paidDifferenceNote; state.transactionDraft.convenienceFee = updated.convenienceFee; }
   try { await persist(); } catch (error) { toast(error.message || 'Payment status could not be saved.', true); return; }
   state.paymentModal = null;
-  toast('Payment marked paid.');
+  toast(difference ? `Payment marked paid at ${money(paidAmountCents)}.` : 'Payment marked paid.');
   render();
 }
 
@@ -661,9 +899,9 @@ async function applyWorkUse(form) {
 async function unmarkPaid() {
   const transaction = state.store.transactions.find((item) => item.id === state.paymentModal?.id);
   if (!transaction || !window.confirm(`Remove the paid date from ${transaction.description}?`)) return;
-  const updated = { ...transaction, paidDate: '', updatedAt: new Date().toISOString() };
+  const updated = { ...transaction, paidDate: '', paidAmountCents: null, paidDifferenceNote: '', convenienceFee: false, updatedAt: new Date().toISOString() };
   state.store.transactions = state.store.transactions.map((item) => item.id === updated.id ? updated : item);
-  if (state.transactionDraft?.id === updated.id) state.transactionDraft.paidDate = '';
+  if (state.transactionDraft?.id === updated.id) { state.transactionDraft.paidDate = ''; state.transactionDraft.paidAmountCents = null; state.transactionDraft.paidDifferenceNote = ''; state.transactionDraft.convenienceFee = false; }
   try { await persist(); } catch (error) { toast(error.message || 'Payment status could not be changed.', true); return; }
   state.paymentModal = null;
   toast('Payment marked unpaid.');
@@ -709,6 +947,19 @@ async function saveCategory(form) {
   state.store.categories.push({ id: `category-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, type, name, active: true }); try { await persist(); } catch (error) { toast(error.message || 'Category could not be added.', true); return; } toast('Category added.'); render();
 }
 
+async function saveDescription(form) {
+  const name = String(form.get('description') || '').trim();
+  if (!name) { toast('Enter a description.', true); return; }
+  if (!Array.isArray(state.store.descriptions)) state.store.descriptions = [];
+  if (state.store.descriptions.some((description) => description.toLowerCase() === name.toLowerCase())) { toast('That description already exists.', true); return; }
+  state.store.descriptions = [...state.store.descriptions, name].sort((a, b) => a.localeCompare(b));
+  try { await persist(); } catch (error) { state.store.descriptions = state.store.descriptions.filter((description) => description !== name); toast(error.message || 'Description could not be added.', true); return; }
+  state.transactionDraft.description = name;
+  state.descriptionModal = false;
+  toast('Description added.');
+  render();
+}
+
 async function toggleCategory(idValue) { const category = findCategory(idValue); if (!category) return; category.active = !category.active; try { await persist(); } catch (error) { toast(error.message || 'Category could not be updated.', true); return; } toast(category.active ? 'Category activated.' : 'Category deactivated.'); render(); }
 
 async function persist() { state.store = await window.taxLedger.saveStore(state.store); }
@@ -746,7 +997,7 @@ async function restoreJson() {
 
 function renderAboutModal() { return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="about-title"><div class="modal-header"><h2 id="about-title">About TaxMan</h2><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><div style="display:flex;align-items:center;gap:14px;margin-bottom:16px"><img class="brand-icon" src="assets/taxman-icon.png" alt=""><div><strong style="font-size:18px;color:var(--navy)">TaxMan</strong><div class="muted">Version ${escapeHtml(state.appVersion)}</div></div></div><p>A local-first income and expenditure ledger for preparing records for your tax preparer.</p><p class="muted">Your data stays on this computer. This application does not submit tax forms or determine tax treatment.</p><div class="modal-actions"><button type="button" class="primary-button" data-action="close-modal">Close</button></div></div></section></div>`; }
 
-function renderShortcutsModal() { return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title"><div class="modal-header"><h2 id="shortcuts-title">Keyboard shortcuts</h2><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><div class="shortcut-list"><div><kbd>Ctrl</kbd> + <kbd>N</kbd><span>New expense</span></div><div><kbd>Ctrl</kbd> + <kbd>S</kbd><span>Save the open transaction</span></div><div><kbd>Ctrl</kbd> + <kbd>1</kbd> through <kbd>4</kbd><span>Open Dashboard, Transactions, Companies, or Reports</span></div><div><kbd>Esc</kbd><span>Close a dialog or cancel the open form</span></div></div><p class="notice" style="margin-top:18px">Date tip: type six digits such as <strong>090826</strong> and the app records September 8, 2026.</p><div class="modal-actions"><button type="button" class="primary-button" data-action="close-modal">Close</button></div></div></section></div>`; }
+function renderShortcutsModal() { return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title"><div class="modal-header"><h2 id="shortcuts-title">Keyboard shortcuts</h2><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><div class="shortcut-list"><div class="shortcut-row"><div class="shortcut-keys"><kbd>Ctrl</kbd><span class="shortcut-join">+</span><kbd>N</kbd></div><span class="shortcut-description">New expense</span></div><div class="shortcut-row"><div class="shortcut-keys"><kbd>Ctrl</kbd><span class="shortcut-join">+</span><kbd>S</kbd></div><span class="shortcut-description">Save the open transaction</span></div><div class="shortcut-row"><div class="shortcut-keys"><kbd>Ctrl</kbd><span class="shortcut-join">+</span><kbd>1</kbd></div><span class="shortcut-description">Open Dashboard</span></div><div class="shortcut-row"><div class="shortcut-keys"><kbd>Ctrl</kbd><span class="shortcut-join">+</span><kbd>2</kbd></div><span class="shortcut-description">Open Transactions</span></div><div class="shortcut-row"><div class="shortcut-keys"><kbd>Ctrl</kbd><span class="shortcut-join">+</span><kbd>3</kbd></div><span class="shortcut-description">Open Companies</span></div><div class="shortcut-row"><div class="shortcut-keys"><kbd>Ctrl</kbd><span class="shortcut-join">+</span><kbd>4</kbd></div><span class="shortcut-description">Open Reports</span></div><div class="shortcut-row"><div class="shortcut-keys"><kbd>Esc</kbd></div><span class="shortcut-description">Close a dialog or cancel the open form</span></div></div><p class="notice" style="margin-top:18px">Date tip: type six digits such as <strong>090826</strong> and the app records September 8, 2026.</p><div class="modal-actions"><button type="button" class="primary-button" data-action="close-modal">Close</button></div></div></section></div>`; }
 
 function handleUpdateStatus(status) {
   if (!status?.message) return;

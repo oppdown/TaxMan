@@ -13,15 +13,16 @@ if (!window.taxLedger) {
   ];
   const DEFAULT_CATEGORIES = [
     ['income-freelance', 'income', 'Freelance / 1099'], ['income-sales', 'income', 'Sales'], ['income-wages', 'income', 'Wages'], ['income-other', 'income', 'Interest / Other'],
-    ['expense-utilities', 'expense', 'Utilities'], ['expense-internet-phone', 'expense', 'Internet / Phone'], ['expense-office-supplies', 'expense', 'Office Supplies'],
+    ['expense-utilities', 'expense', 'Utilities'], ['expense-utilities-electricity', 'expense', 'UTILITIES - Electricity'], ['expense-utilities-internet', 'expense', 'UTILITIES - Internet'], ['expense-utilities-natural-gas', 'expense', 'UTILITIES - Natural Gas'], ['expense-utilities-phone', 'expense', 'UTILITIES - Phone'], ['expense-utilities-water', 'expense', 'UTILITIES - Water'], ['expense-internet-phone', 'expense', 'Internet / Phone'], ['expense-office-supplies', 'expense', 'Office Supplies'],
     ['expense-software', 'expense', 'Software / Subscriptions'], ['expense-advertising', 'expense', 'Advertising'], ['expense-professional-services', 'expense', 'Professional Services'],
     ['expense-insurance', 'expense', 'Insurance'], ['expense-banking-costs', 'expense', 'Banking Costs'], ['expense-travel-vehicle', 'expense', 'Travel / Vehicle'],
     ['expense-home-office', 'expense', 'Home Office'], ['expense-other', 'expense', 'Other']
   ];
   const DEFAULT_WORK_TIME = { hoursPerDay: 8, daysPerWeek: 7 };
+  const DEFAULT_DESCRIPTIONS = ['Electricity', 'Internet', 'Natural Gas', 'Phone', 'Water', 'Software'];
 
   function emptyStore() {
-    return { schemaVersion: 1, taxYear: 2025, companies: DEFAULT_COMPANIES.map(([id, name, classification]) => ({ id, name, classification, phone: '', email: '', website: '', notes: '', mailingAddress1: '', mailingAddress2: '', mailingCity: '', mailingState: '', mailingPostalCode: '' })), categories: DEFAULT_CATEGORIES.map(([id, type, name]) => ({ id, type, name, active: true })), workTime: { ...DEFAULT_WORK_TIME }, transactions: [], updatedAt: new Date().toISOString() };
+    return { schemaVersion: 1, taxYear: 2025, companies: DEFAULT_COMPANIES.map(([id, name, classification]) => ({ id, name, classification, phone: '', email: '', website: '', notes: '', mailingAddress1: '', mailingAddress2: '', mailingCity: '', mailingState: '', mailingPostalCode: '' })), categories: DEFAULT_CATEGORIES.map(([id, type, name]) => ({ id, type, name, active: true })), descriptions: [...DEFAULT_DESCRIPTIONS], workTime: { ...DEFAULT_WORK_TIME }, transactions: [], updatedAt: new Date().toISOString() };
   }
   function normalizeWorkTime(value) { const source = value && typeof value === 'object' ? value : {}; const hoursPerDay = Number(source.hoursPerDay); const daysPerWeek = Number(source.daysPerWeek); return { hoursPerDay: Number.isFinite(hoursPerDay) ? Math.round(Math.max(0, Math.min(24, hoursPerDay)) * 100) / 100 : DEFAULT_WORK_TIME.hoursPerDay, daysPerWeek: Number.isFinite(daysPerWeek) ? Math.round(Math.max(0, Math.min(7, daysPerWeek)) * 100) / 100 : DEFAULT_WORK_TIME.daysPerWeek }; }
   function normalizeStore(input) {
@@ -31,9 +32,10 @@ if (!window.taxLedger) {
       schemaVersion: 1,
       taxYear: Number.isInteger(source.taxYear) ? source.taxYear : base.taxYear,
       companies: Array.isArray(source.companies) ? source.companies.map((item) => ({ id: String(item.id || cryptoId('company')), name: String(item.name || '').trim(), classification: String(item.classification || 'Other'), phone: String(item.phone || ''), email: String(item.email || ''), website: String(item.website || ''), notes: String(item.notes || ''), mailingAddress1: String(item.mailingAddress1 || ''), mailingAddress2: String(item.mailingAddress2 || ''), mailingCity: String(item.mailingCity || ''), mailingState: String(item.mailingState || ''), mailingPostalCode: String(item.mailingPostalCode || ''), alwaysHomeOfficeRelated: Boolean(item.alwaysHomeOfficeRelated) })) : base.companies,
-      categories: Array.isArray(source.categories) ? source.categories.map((item) => ({ id: String(item.id || cryptoId('category')), type: item.type === 'income' ? 'income' : 'expense', name: String(item.name || '').trim(), active: item.active !== false })) : base.categories,
+      categories: (() => { const normalized = (Array.isArray(source.categories) ? source.categories : base.categories).map((item) => ({ id: String(item.id || cryptoId('category')), type: item.type === 'income' ? 'income' : 'expense', name: String(item.name || '').trim(), active: item.active !== false })); if (Array.isArray(source.categories)) { const ids = new Set(normalized.map((item) => item.id)); for (const [id, type, name] of DEFAULT_CATEGORIES.filter((item) => item[0].startsWith('expense-utilities-'))) if (!ids.has(id)) normalized.push({ id, type, name, active: true }); } return normalized; })(),
+      descriptions: [...new Set((Array.isArray(source.descriptions) ? source.descriptions : base.descriptions).map((item) => String(item || '').trim()).filter(Boolean))].slice(0, 100),
       workTime: normalizeWorkTime(source.workTime || base.workTime),
-      transactions: Array.isArray(source.transactions) ? source.transactions.map((item) => { const receiptImages = Array.isArray(item.receiptImages) ? item.receiptImages.filter((image) => typeof image === 'string').slice(0, 20) : (typeof item.receiptImageData === 'string' && item.receiptImageData ? [item.receiptImageData] : []); return { ...item, paidDate: typeof item.paidDate === 'string' ? item.paidDate : '', receiptImages, receiptImageData: receiptImages[0] || '' }; }) : [],
+      transactions: Array.isArray(source.transactions) ? source.transactions.map((item) => { const receiptImages = Array.isArray(item.receiptImages) ? item.receiptImages.filter((image) => typeof image === 'string').slice(0, 20) : (typeof item.receiptImageData === 'string' && item.receiptImageData ? [item.receiptImageData] : []); return { ...item, paidDate: typeof item.paidDate === 'string' ? item.paidDate : '', paidAmountCents: Number.isInteger(item.paidAmountCents) ? item.paidAmountCents : null, paidDifferenceNote: String(item.paidDifferenceNote || ''), convenienceFee: Boolean(item.convenienceFee), receiptImages, receiptImageData: receiptImages[0] || '' }; }) : [],
       updatedAt: new Date().toISOString()
     };
   }
@@ -96,8 +98,8 @@ if (!window.taxLedger) {
   function csv(store, year) {
     const companies = new Map(store.companies.map((item) => [item.id, item.name]));
     const categories = new Map(store.categories.map((item) => [item.id, item.name]));
-    const headers = ['Date', 'Income/Expense', 'Company/source', 'Category', 'Description', 'Amount', 'Business use %', 'Allocated business amount', 'Home office related', 'Notes'];
-    const rows = store.transactions.filter((item) => item.taxYear === Number(year)).map((item) => [item.date, item.type === 'income' ? 'Income' : 'Expense', companies.get(item.companyId) || 'Unknown company', categories.get(item.categoryId) || 'Unknown category', item.description, ((item.amountCents || 0) / 100).toFixed(2), item.businessUsePercent ?? '', (((item.amountCents || 0) * Number(item.businessUsePercent ?? 0) / 100) / 100).toFixed(2), item.homeOfficeRelated ? 'Yes' : 'No', item.notes]);
+    const headers = ['Date', 'Income/Expense', 'Company/source', 'Category', 'Description', 'Amount billed', 'Business use %', 'Allocated business amount', 'Home office related', 'Paid date', 'Amount paid', 'Paid difference', 'Convenience fee', 'Notes'];
+    const rows = store.transactions.filter((item) => item.taxYear === Number(year)).map((item) => { const paidAmount = Number.isInteger(item.paidAmountCents) ? item.paidAmountCents : null; const paidDifference = paidAmount === null ? null : paidAmount - (item.amountCents || 0); return [item.date, item.type === 'income' ? 'Income' : 'Expense', companies.get(item.companyId) || 'Unknown company', categories.get(item.categoryId) || 'Unknown category', item.description, ((item.amountCents || 0) / 100).toFixed(2), item.businessUsePercent ?? '', (((item.amountCents || 0) * Number(item.businessUsePercent ?? 0) / 100) / 100).toFixed(2), item.homeOfficeRelated ? 'Yes' : 'No', item.paidDate || '', paidAmount === null ? '' : (paidAmount / 100).toFixed(2), paidDifference === null ? '' : (paidDifference / 100).toFixed(2), item.convenienceFee ? 'Yes' : 'No', item.paidDifferenceNote ? `${item.paidDifferenceNote}${item.notes ? ` · ${item.notes}` : ''}` : item.notes]; });
     return [headers, ...rows].map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n') + '\r\n';
   }
   function chooseJsonFile() {
@@ -114,13 +116,15 @@ if (!window.taxLedger) {
     supportsPairing: true,
     loadStore: async () => { try { return normalizeStore(JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')); } catch { return emptyStore(); } },
     saveStore: async (store) => { const normalized = normalizeStore(store); try { localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized)); } catch { throw new Error('The mobile ledger is full. Export a JSON backup, then remove an old photo.'); } return normalized; },
+    getWorkspace: async () => ({ configured: true, available: true, path: 'This device', portable: true }),
+    chooseWorkspace: async () => ({ canceled: true }),
     importJson: chooseJsonFile,
     exportJson: async (store) => { download('taxman-mobile-backup.json', JSON.stringify(normalizeStore(store), null, 2), 'application/json'); return { canceled: false, path: 'taxman-mobile-backup.json' }; },
     exportCsv: async (store, year) => { download(`taxman-${year || 'transactions'}.csv`, csv(normalizeStore(store), year), 'text/csv'); return { canceled: false, path: `taxman-${year || 'transactions'}.csv` }; },
     exportPdf: async () => { window.print(); return { canceled: true }; },
     openFolder: async () => {},
     checkForUpdates: async () => { window.open('https://taxman.speedy-star-8288.chatgpt.site/download.html', '_blank'); },
-    getVersion: async () => '0.4.10',
+    getVersion: async () => '0.4.15',
     startPhoneCapture: async () => ({ direct: true }),
     stopPhoneCapture: async () => {},
     getPairedComputer: async () => loadPairedComputer(),

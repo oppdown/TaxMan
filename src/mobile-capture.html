@@ -7,34 +7,66 @@
   <style>
     :root { color-scheme: light; font-family: system-ui, sans-serif; background: #eef3f8; color: #172033; }
     body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 18px; }
-    main { width: min(520px, 100%); background: white; border: 1px solid #d8e1ea; border-radius: 18px; padding: 28px; box-shadow: 0 14px 35px rgba(18,59,99,.12); }
+    main { width: min(520px, 100%); box-sizing: border-box; background: white; border: 1px solid #d8e1ea; border-radius: 18px; padding: 28px; box-shadow: 0 14px 35px rgba(18,59,99,.12); }
     h1 { margin: 0 0 8px; color: #123b63; font-size: 28px; } p { line-height: 1.5; color: #647387; }
     .button { display: block; width: 100%; border: 0; border-radius: 10px; padding: 15px 18px; background: #2878b9; color: white; font: inherit; font-weight: 700; font-size: 17px; }
-    .button:disabled { opacity: .6; } .preview { display: none; width: 100%; max-height: 55vh; object-fit: contain; margin: 18px 0; border-radius: 10px; border: 1px solid #d8e1ea; background: #f7f9fb; }
+    .button.secondary { background: #e8f0f6; color: #123b63; }
+    .button:disabled { opacity: .6; }
+    .preview { display: block; width: 100%; max-height: 55vh; object-fit: contain; margin: 0; border-radius: 10px; background: #f7f9fb; }
+    .crop-stage { display: none; position: relative; width: 100%; margin: 18px 0; overflow: hidden; border: 1px solid #d8e1ea; border-radius: 10px; background: #f7f9fb; line-height: 0; touch-action: none; }
+    .crop-stage .preview { max-height: 55vh; }
+    .crop-window { position: absolute; border: 2px solid #2878b9; box-shadow: 0 0 0 9999px rgba(18,59,99,.3); touch-action: none; }
+    .crop-handle { position: absolute; z-index: 2; border: 0; border-radius: 8px; background: #2878b9; box-shadow: 0 1px 5px rgba(18,59,99,.35); touch-action: none; }
+    .crop-handle-top,.crop-handle-bottom { left: 50%; width: 54px; height: 18px; transform: translate(-50%,-50%); cursor: ns-resize; }
+    .crop-handle-top { top: 0; } .crop-handle-bottom { bottom: 0; transform: translate(-50%,50%); }
+    .crop-handle-left,.crop-handle-right { top: 50%; width: 18px; height: 54px; transform: translate(-50%,-50%); cursor: ew-resize; }
+    .crop-handle-left { left: 0; } .crop-handle-right { right: 0; transform: translate(50%,-50%); }
+    .editor { display: none; gap: 12px; margin-top: 14px; padding: 14px; border: 1px solid #d8e1ea; border-radius: 12px; background: #f7fafd; }
+    .editor-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .editor label { display: grid; gap: 6px; color: #36566f; font-size: 13px; font-weight: 700; }
+    .editor input { width: 100%; box-sizing: border-box; accent-color: #2878b9; }
     .status { min-height: 24px; margin-top: 14px; font-weight: 600; } .success { color: #167a55; } .error { color: #b33b3b; }
     .small { font-size: 12px; }
+    @media (max-width: 420px) { body { padding: 10px; } main { padding: 20px; } h1 { font-size: 24px; } .editor-actions { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <main>
     <h1>Send a bill photo to TaxMan</h1>
-    <p>Take a clear photo of the whole bill. TaxMan will show it in the open transaction so you can review the details before saving.</p>
+    <p>Take a clear photo of the whole bill. Review, crop, or rotate it before sending it to the open transaction.</p>
     <input id="photo" type="file" accept="image/*" capture="environment" hidden>
     <button class="button" id="choose" type="button">Take bill photo</button>
-    <button class="button" id="another" type="button" hidden>Send Another Photo</button>
-    <img id="preview" class="preview" alt="Bill photo preview">
+    <div id="crop-stage" class="crop-stage" data-crop-stage><img id="preview" class="preview" alt="Bill photo preview"><div id="crop-window" class="crop-window"><button class="crop-handle crop-handle-top" data-crop-edge="top" type="button" aria-label="Drag top crop edge"></button><button class="crop-handle crop-handle-right" data-crop-edge="right" type="button" aria-label="Drag right crop edge"></button><button class="crop-handle crop-handle-bottom" data-crop-edge="bottom" type="button" aria-label="Drag bottom crop edge"></button><button class="crop-handle crop-handle-left" data-crop-edge="left" type="button" aria-label="Drag left crop edge"></button></div></div>
+    <div id="editor" class="editor">
+      <div class="editor-actions"><button class="button secondary" id="rotate-left" type="button">Rotate left</button><button class="button secondary" id="rotate-right" type="button">Rotate right</button></div>
+      <p class="small">Drag any blue edge independently to crop that side. Use the rotate buttons if the page is sideways.</p>
+      <button class="button" id="send" type="button">Send this page</button>
+    </div>
     <div id="status" class="status" aria-live="polite"></div>
-    <p class="small">For privacy, this temporary link works only on the same local network and expires shortly.</p>
+    <p class="small">For privacy, this temporary link works only on the same local network and expires shortly. After a page is sent, take another page from this same screen.</p>
   </main>
   <script>
     const token = new URLSearchParams(location.search).get('token');
     const input = document.getElementById('photo');
     const choose = document.getElementById('choose');
-    const another = document.getElementById('another');
     const preview = document.getElementById('preview');
+    const editor = document.getElementById('editor');
+    const cropStage = document.getElementById('crop-stage');
+    const cropWindow = document.getElementById('crop-window');
+    const send = document.getElementById('send');
     const status = document.getElementById('status');
-    choose.addEventListener('click', () => input.click());
-    another.addEventListener('click', () => input.click());
+    let pendingImage = '';
+    let rotation = 0;
+    let cropEdges = { top: 0, right: 0, bottom: 0, left: 0 };
+    let cropDrag = null;
+    let previewRender = 0;
+    choose.addEventListener('click', () => { input.value = ''; input.click(); });
+    document.getElementById('rotate-left').addEventListener('click', () => { rotation = (rotation + 270) % 360; renderPreview(); });
+    document.getElementById('rotate-right').addEventListener('click', () => { rotation = (rotation + 90) % 360; renderPreview(); });
+    cropStage.addEventListener('pointerdown', (event) => { const handle = event.target.closest('[data-crop-edge]'); if (!handle) return; event.preventDefault(); cropDrag = { edge: handle.dataset.cropEdge, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, start: { ...cropEdges } }; handle.setPointerCapture?.(event.pointerId); });
+    cropStage.addEventListener('pointermove', (event) => { if (!cropDrag || cropDrag.pointerId !== event.pointerId) return; const rect = cropStage.getBoundingClientRect(); if (!rect.width || !rect.height) return; const dx = (event.clientX - cropDrag.startX) / rect.width * 100; const dy = (event.clientY - cropDrag.startY) / rect.height * 100; const deltas = { top: dy, right: -dx, bottom: -dy, left: dx }; const opposite = { top: 'bottom', right: 'left', bottom: 'top', left: 'right' }[cropDrag.edge]; const limit = Math.min(45, 90 - cropDrag.start[opposite]); cropEdges[cropDrag.edge] = Math.max(0, Math.min(limit, cropDrag.start[cropDrag.edge] + deltas[cropDrag.edge])); updateCropOverlay(); renderPreview(); });
+    cropStage.addEventListener('pointerup', (event) => { if (cropDrag?.pointerId === event.pointerId) cropDrag = null; });
+    cropStage.addEventListener('pointercancel', () => { cropDrag = null; });
     input.addEventListener('change', async () => {
       const file = input.files?.[0];
       if (!file) return;
@@ -42,39 +74,31 @@
       status.className = 'status';
       status.textContent = 'Preparing photo…';
       try {
-        const imageData = await resize(file);
-        preview.src = imageData;
-        preview.style.display = 'block';
-        status.textContent = 'Sending to TaxMan…';
+        pendingImage = await resize(file);
+        rotation = 0; cropEdges = { top: 0, right: 0, bottom: 0, left: 0 }; updateCropOverlay();
+        editor.style.display = 'grid'; cropStage.style.display = 'block';
+        await renderPreview();
+        status.textContent = 'Review the page, then send it to TaxMan.';
+        choose.textContent = 'Choose a different photo';
+        choose.disabled = false;
+      } catch (error) { status.className = 'status error'; status.textContent = error.message || 'The photo could not be prepared.'; choose.disabled = false; }
+    });
+    send.addEventListener('click', async () => {
+      if (!pendingImage) return;
+      send.disabled = true; choose.disabled = true; status.className = 'status'; status.textContent = 'Sending to TaxMan…';
+      try {
+        const imageData = await transform(pendingImage, rotation, cropEdges);
         const response = await fetch('/upload?token=' + encodeURIComponent(token), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageData }) });
         const result = await response.json();
         if (!response.ok || !result.ok) throw new Error(result.error || 'The photo could not be sent.');
-        status.className = 'status success';
-        status.textContent = 'Photo received. You can return to TaxMan.';
-        another.hidden = false;
-        choose.disabled = false;
-      } catch (error) { status.className = 'status error'; status.textContent = error.message || 'The photo could not be sent.'; choose.disabled = false; }
+        status.className = 'status success'; status.textContent = 'Page received. Take another page or return to TaxMan.';
+        editor.style.display = 'none'; cropStage.style.display = 'none'; choose.textContent = 'Take another bill page'; choose.disabled = false; send.disabled = false; pendingImage = '';
+      } catch (error) { status.className = 'status error'; status.textContent = error.message || 'The photo could not be sent.'; choose.disabled = false; send.disabled = false; }
     });
-    function resize(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(new Error('The photo could not be read.'));
-        reader.onload = () => {
-          const image = new Image();
-          image.onerror = () => reject(new Error('The photo could not be opened.'));
-          image.onload = () => {
-            const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
-            const canvas = document.createElement('canvas');
-            canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-            canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-            canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
-            resolve(canvas.toDataURL('image/jpeg', .78));
-          };
-          image.src = reader.result;
-        };
-        reader.readAsDataURL(file);
-      });
-    }
+    async function renderPreview() { const id = ++previewRender; const image = await transform(pendingImage, rotation, cropEdges); if (id === previewRender) preview.src = image; }
+    function updateCropOverlay() { cropWindow.style.top = `${cropEdges.top}%`; cropWindow.style.right = `${cropEdges.right}%`; cropWindow.style.bottom = `${cropEdges.bottom}%`; cropWindow.style.left = `${cropEdges.left}%`; }
+    function resize(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = () => reject(new Error('The photo could not be read.')); reader.onload = () => { const image = new Image(); image.onerror = () => reject(new Error('The photo could not be opened.')); image.onload = () => { const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight)); const canvas = document.createElement('canvas'); canvas.width = Math.max(1, Math.round(image.naturalWidth * scale)); canvas.height = Math.max(1, Math.round(image.naturalHeight * scale)); canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL('image/jpeg', .82)); }; image.src = reader.result; }; reader.readAsDataURL(file); }); }
+    function transform(imageData, degrees, edges) { return new Promise((resolve, reject) => { const image = new Image(); image.onerror = () => reject(new Error('The photo could not be edited.')); image.onload = () => { const top = Math.max(0, Math.min(45, Number(edges?.top) || 0)) / 100; const right = Math.max(0, Math.min(45, Number(edges?.right) || 0)) / 100; const bottom = Math.max(0, Math.min(45, Number(edges?.bottom) || 0)) / 100; const left = Math.max(0, Math.min(45, Number(edges?.left) || 0)) / 100; const x = Math.round(image.naturalWidth * left); const y = Math.round(image.naturalHeight * top); const width = Math.max(1, Math.round(image.naturalWidth * (1 - left - right))); const height = Math.max(1, Math.round(image.naturalHeight * (1 - top - bottom))); const rotationValue = ((degrees % 360) + 360) % 360; const outputWidth = rotationValue === 90 || rotationValue === 270 ? height : width; const outputHeight = rotationValue === 90 || rotationValue === 270 ? width : height; const canvas = document.createElement('canvas'); canvas.width = outputWidth; canvas.height = outputHeight; const context = canvas.getContext('2d'); if (rotationValue === 90) { context.translate(outputWidth, 0); context.rotate(Math.PI / 2); } else if (rotationValue === 180) { context.translate(outputWidth, outputHeight); context.rotate(Math.PI); } else if (rotationValue === 270) { context.translate(0, outputHeight); context.rotate(-Math.PI / 2); } context.drawImage(image, x, y, width, height, 0, 0, width, height); resolve(canvas.toDataURL('image/jpeg', .84)); }; image.src = imageData; }); }
   </script>
 </body>
 </html>

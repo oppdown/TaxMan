@@ -19,8 +19,33 @@ async function main() {
     checks.quickAddOpensForm = Boolean(document.getElementById('transaction-form'));
     checks.newTransactionDateStartsBlank = document.getElementById('transaction-date')?.value === '';
     checks.newExpenseBusinessUseStartsAtZero = document.getElementById('business-use')?.value === '0';
+    checks.descriptionDropdownHasPresets = JSON.stringify([...document.querySelectorAll('#transaction-description-select option')].map((option) => option.textContent.trim())) === JSON.stringify(['Electricity', 'Internet', 'Natural Gas', 'Phone', 'Water', 'Software', 'Other']);
+    document.querySelector('[data-action="add-description"]').click(); await wait();
+    checks.addDescriptionOpensWindow = Boolean(document.getElementById('description-form'));
+    set('new-description', 'Office rent');
+    document.getElementById('description-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait();
+    checks.addDescriptionPersistsAndSelects = [...document.querySelectorAll('#transaction-description-select option')].some((option) => option.textContent.trim() === 'Office rent')
+      && document.getElementById('transaction-description-select')?.value === 'Office rent';
+    document.getElementById('transaction-description-select').value = 'Electricity';
+    document.getElementById('transaction-description-select').dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    checks.descriptionPresetHidesCustomInput = !document.getElementById('transaction-description')?.matches('textarea') && document.getElementById('transaction-description')?.value === 'Electricity';
+    document.getElementById('transaction-description-select').value = 'Other';
+    document.getElementById('transaction-description-select').dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    checks.otherDescriptionRequiresText = document.getElementById('transaction-description')?.matches('textarea[required]') === true;
+    const utilityCategoryNames = [...document.querySelectorAll('#transaction-category option')].map((option) => option.textContent.trim()).filter((name) => name.startsWith('UTILITIES - '));
+    checks.utilityCategoriesPresentAndSorted = JSON.stringify(utilityCategoryNames) === JSON.stringify(['UTILITIES - Electricity', 'UTILITIES - Internet', 'UTILITIES - Natural Gas', 'UTILITIES - Phone', 'UTILITIES - Water'])
+      && [...document.querySelectorAll('#transaction-category option')].some((option) => option.textContent.trim() === 'Utilities');
     checks.phonePhotoCapturePresent = Boolean(document.querySelector('[data-action="start-phone-capture"]')) && document.getElementById('receipt-photo')?.accept === 'image/*';
     checks.readBillSupportEnabled = window.taxLedger.supportsOcr === true;
+    set('transaction-date', '090826');
+    set('transaction-description', 'Phone draft preservation');
+    set('transaction-amount', '12.50');
+    document.querySelector('[data-action="start-phone-capture"]')?.click(); await wait();
+    checks.phoneCaptureKeepsUnsavedTransaction = document.getElementById('phone-capture-url')?.value.includes('capture?token=smoke')
+      && document.getElementById('transaction-date')?.value === '090826'
+      && document.getElementById('transaction-description')?.value === 'Phone draft preservation'
+      && document.getElementById('transaction-amount')?.value === '12.50';
+    document.querySelector('[data-action="cancel-phone-capture"]')?.click(); await wait();
 
     set('transaction-company', '__create__'); await wait();
     checks.createNewFromDropdown = document.getElementById('modal-title')?.textContent.includes('Create new');
@@ -36,6 +61,16 @@ async function main() {
     set('transaction-date', '090826');
     set('transaction-description', 'Smoke test expense');
     set('transaction-amount', '12.50');
+    set('transaction-notes', 'Keep this note while calculating');
+    document.querySelector('[data-action="calculate-business-use"]')?.click(); await wait();
+    document.getElementById('work-use-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait();
+    checks.workUseKeepsUnsavedTransaction = document.getElementById('transaction-date')?.value === '090826'
+      && Boolean(document.getElementById('transaction-company')?.value)
+      && document.getElementById('transaction-category')?.value === 'expense-office-supplies'
+      && document.getElementById('transaction-description')?.value === 'Smoke test expense'
+      && document.getElementById('transaction-amount')?.value === '12.50'
+      && document.getElementById('transaction-notes')?.value === 'Keep this note while calculating'
+      && document.getElementById('business-use')?.value === '33.33';
     document.getElementById('home-office-related').click();
     checks.homeOfficeDefaultsTo33 = document.getElementById('business-use')?.value === '33.33';
     document.getElementById('transaction-amount').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -51,9 +86,12 @@ async function main() {
     document.querySelector('[data-view="transactions"]').click(); await wait();
     document.querySelector('[data-action="mark-paid"]')?.click(); await wait();
     checks.paymentModalShowsDetails = document.getElementById('payment-form')?.textContent.includes('Date paid') && document.body.textContent.includes('Smoke test expense');
+    checks.paymentModalSupportsDifference = Boolean(document.getElementById('paid-amount')) && Boolean(document.getElementById('convenience-fee')) && Boolean(document.getElementById('paid-difference-note'));
     set('paid-date', '091026');
+    set('paid-amount', '12.75');
+    document.getElementById('convenience-fee').click();
     document.getElementById('payment-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait();
-    checks.paymentStatusPersists = document.querySelector('.data-table')?.textContent.includes('Paid') && document.querySelector('.data-table')?.textContent.includes('09/10/2026');
+    checks.paymentStatusPersists = document.querySelector('.data-table')?.textContent.includes('Paid') && document.querySelector('.data-table')?.textContent.includes('09/10/2026') && document.querySelector('.data-table')?.textContent.includes('fee');
     checks.compactDateSelectsYear = document.getElementById('year-select')?.value === '2026' && document.body.textContent.includes('09/08/2026');
     document.querySelector('[data-action="edit-transaction"]')?.click(); await wait();
     document.querySelector('[data-action="calculate-business-use"]')?.click(); await wait();
@@ -82,7 +120,13 @@ async function main() {
 
     await window.taxLedger.testEmitMenuAction('show-about'); await wait();
     checks.helpMenuOpens = Boolean(document.querySelector('[aria-labelledby="about-title"]'));
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.10');
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.15');
+    document.querySelector('[data-action="close-modal"]').click(); await wait();
+    await window.taxLedger.testEmitMenuAction('show-shortcuts'); await wait();
+    checks.shortcutsUseClearRows = document.querySelectorAll('.shortcut-row').length === 7
+      && [...document.querySelectorAll('.shortcut-row')].every((row) => row.querySelector('.shortcut-keys') && row.querySelector('.shortcut-description'))
+      && [...document.querySelectorAll('.shortcut-description')].map((item) => item.textContent.trim()).includes('Open Dashboard')
+      && [...document.querySelectorAll('.shortcut-description')].map((item) => item.textContent.trim()).includes('Open Reports');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
     await window.taxLedger.testEmitMenuAction('check-for-updates'); await wait();
     checks.checkForUpdatesAction = document.body.textContent.includes('Automatic updates are available in the installed Windows version of TaxMan.');

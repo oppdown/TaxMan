@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.15 - 2026-09-18
+
+- Added paid amount tracking separate from the billed amount, with a required explanation for differences.
+- Added a convenience-fee checkbox that records the paid difference as a convenience fee without extra comment typing.
+- Added independently draggable top, right, bottom, and left crop edges to Windows image editing, the paired-phone flow, and the phone capture page.
+
 ## 0.4.10 - 2026-09-17
 
 - New expense transactions now start at 0% business use so TaxMan never assumes a deduction percentage.

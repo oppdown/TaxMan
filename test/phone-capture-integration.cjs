@@ -20,7 +20,10 @@ async function main() {
   test.equal(page.status, 200);
   const pageHtml = await page.text();
   test.match(pageHtml, /Take bill photo/);
-  test.match(pageHtml, /Send Another Photo/);
+  test.match(pageHtml, /Drag any blue edge/);
+  test.equal((pageHtml.match(/data-crop-edge=/g) || []).length, 4);
+  test.match(pageHtml, /Take another bill page/);
+  test.doesNotMatch(pageHtml, /Send Another Photo/);
   const token = new URL(captureUrl).searchParams.get('token');
   const imageData = `data:image/jpeg;base64,${Buffer.from('integration-photo').toString('base64')}`;
   const upload = await fetch(new URL(`/upload?token=${token}`, captureUrl), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageData }) });

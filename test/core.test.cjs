@@ -20,6 +20,7 @@ function sampleStore() {
 test('empty store is a valid 2025 ledger', () => {
   const store = createEmptyStore();
   assert.equal(store.taxYear, 2025);
+  assert.deepEqual(store.descriptions, ['Electricity', 'Internet', 'Natural Gas', 'Phone', 'Water', 'Software']);
   assert.deepEqual(store.workTime, { hoursPerDay: 8, daysPerWeek: 7 });
   assert.ok(store.companies.some((company) => company.name === 'Hart EMC'));
   assert.ok(store.companies.some((company) => company.name === 'theITSupportCenter'));
@@ -114,6 +115,17 @@ test('paid date normalizes, persists, and validates independently from bill date
   assert.equal(store.transactions[0].date, '2026-05-17');
   assert.equal(store.transactions[0].paidDate, '2026-05-20');
   assert.deepEqual(validateStore(store), []);
+});
+
+test('paid amount differences and convenience fees survive normalization and CSV export', () => {
+  const store = normalizeStore({ companies: [{ id: 'c', name: 'Company' }], transactions: [{ id: 't', date: '2026-05-17', paidDate: '2026-05-20', paidAmountCents: 1300, paidDifferenceNote: 'Online payment fee', convenienceFee: true, type: 'expense', companyId: 'c', categoryId: 'expense-other', description: 'Bill', amountCents: 1250, businessUsePercent: 0 }] });
+  assert.equal(store.transactions[0].paidAmountCents, 1300);
+  assert.equal(store.transactions[0].paidDifferenceNote, 'Online payment fee');
+  assert.equal(store.transactions[0].convenienceFee, true);
+  const csv = serializeCsv(store, 2026);
+  assert.match(csv, /Amount paid/);
+  assert.match(csv, /Online payment fee/);
+  assert.match(csv, /"Yes"/);
 });
 
 test('validation rejects an invalid paid date', () => {

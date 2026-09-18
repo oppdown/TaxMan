@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('taxLedger', {
   supportsPhoneCapture: true,
   loadStore: () => ipcRenderer.invoke('store:load'),
   saveStore: (store) => ipcRenderer.invoke('store:save', store),
+  getWorkspace: () => ipcRenderer.invoke('workspace:get'),
+  chooseWorkspace: () => ipcRenderer.invoke('workspace:choose'),
   importJson: () => ipcRenderer.invoke('store:import'),
   exportJson: (store) => ipcRenderer.invoke('store:export-json', store),
   exportCsv: (store, year) => ipcRenderer.invoke('store:export-csv', store, year),
