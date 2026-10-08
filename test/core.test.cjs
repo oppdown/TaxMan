@@ -87,10 +87,14 @@ test('CSV and PDF report include the combined type column and preparer note', ()
   const store = sampleStore();
   const csv = serializeCsv(store);
   const html = buildReportHtml(store);
+  const sortedCsv = serializeCsv(store, 2025, { key: 'amount', direction: 'asc' });
+  const sortedHtml = buildReportHtml(store, 2025, { key: 'amount', direction: 'asc' });
   assert.match(csv, /Income\/Expense/);
   assert.match(csv, /Georgia Power/);
   assert.match(html, /Income\/Expense/);
   assert.match(html, /Final tax treatment/);
+  assert.ok(sortedCsv.indexOf('Electric bill') < sortedCsv.indexOf('January project'));
+  assert.ok(sortedHtml.indexOf('<td>Electric bill</td>') < sortedHtml.indexOf('<td>January project</td>'));
 });
 
 test('receipt photos normalize and survive local store validation', () => {

@@ -89,8 +89,7 @@ async function storageStats() {
   const currentBytes = await sizeOf(currentPath);
   const recoveryBytes = await sizeOf(recoveryPath);
   const backupFolder = await directoryStats(backupFolderPath);
-  const workspaceFolder = await directoryStats(path.dirname(currentPath));
-  return { currentPath, currentBytes, recoveryPath, recoveryBytes, backupFolderPath, backupFolderBytes: backupFolder.bytes, backupFileCount: backupFolder.fileCount, workspaceBytes: workspaceFolder.bytes, workspaceFileCount: workspaceFolder.fileCount };
+  return { currentPath, currentBytes, recoveryPath, recoveryBytes, backupFolderPath, backupFolderBytes: backupFolder.bytes, backupFileCount: backupFolder.fileCount };
 }
 
 async function pruneBackupSnapshots() {
@@ -514,22 +513,29 @@ function registerIpc() {
     await writeWorkspaceConfig(configuredWorkspacePath);
     return { canceled: false, path: result.filePath };
   });
-  ipcMain.handle('store:export-csv', async (_event, store, year) => {
+  ipcMain.handle('store:export-csv', async (_event, store, year, sort) => {
     const result = await saveDialog(`taxman-${year || 'transactions'}.csv`, [{ name: 'CSV spreadsheet', extensions: ['csv'] }]);
     if (result.canceled || !result.filePath) return { canceled: true };
-    await fs.writeFile(result.filePath, serializeCsv(normalizeStore(store), year), 'utf8');
+    await fs.writeFile(result.filePath, serializeCsv(normalizeStore(store), year, sort), 'utf8');
     return { canceled: false, path: result.filePath };
   });
-  ipcMain.handle('report:export-pdf', async (_event, store, year) => {
+  ipcMain.handle('report:export-pdf', async (_event, store, year, sort) => {
     const result = await saveDialog(`taxman-${year || 'report'}.pdf`, [{ name: 'PDF report', extensions: ['pdf'] }]);
     if (result.canceled || !result.filePath) return { canceled: true };
     const reportWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
     try {
-      await reportWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildReportHtml(normalizeStore(store), year))}`);
+      await reportWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildReportHtml(normalizeStore(store), year, sort))}`);
       const pdf = await reportWindow.webContents.printToPDF({ landscape: true, pageSize: 'Letter', printBackground: true, margins: { marginType: 'default' } });
       await fs.writeFile(result.filePath, pdf);
     } finally { if (!reportWindow.isDestroyed()) reportWindow.destroy(); }
     return { canceled: false, path: result.filePath };
+  });
+  ipcMain.handle('report:print', async (_event, store, year, sort) => {
+    const reportWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
+    try {
+      await reportWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildReportHtml(normalizeStore(store), year, sort))}`);
+      return await new Promise((resolve) => reportWindow.webContents.print({ silent: false, printBackground: true }, (success, failureReason) => resolve({ canceled: !success, error: failureReason || '' })));
+    } finally { if (!reportWindow.isDestroyed()) reportWindow.destroy(); }
   });
   ipcMain.handle('app:open-folder', (_event, filePath) => shell.showItemInFolder(filePath));
   ipcMain.handle('app:check-for-updates', () => checkForUpdates());

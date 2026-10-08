@@ -8,8 +8,8 @@ function createApplicationMenuTemplate(dispatch) {
       submenu: [
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: send('file-save') },
         { label: 'Save As…', click: send('file-save-as') },
-        { label: 'Choose workspace folder…', click: send('choose-workspace') },
-        { label: 'Open workspace folder', click: send('open-workspace') },
+        { label: 'Choose data folder…', click: send('choose-workspace') },
+        { label: 'Open data folder', click: send('open-workspace') },
         { type: 'separator' },
         { role: 'quit', label: 'Exit' }
       ]

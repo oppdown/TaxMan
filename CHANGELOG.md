@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.19 - 2026-10-08
+
+- Preserve transaction details while changing transaction type or category.
+- Add a printable report preview with sortable transaction columns, printer selection, PDF export, and CSV export.
+- Remove the workspace-folder size total from Storage & Backups.
+
 ## 0.4.18 - 2026-09-18
 
 - Added a streamlined “Back to all transactions” button at the top of the transaction entry and edit view.

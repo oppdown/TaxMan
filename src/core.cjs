@@ -273,13 +273,32 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;');
 }
 
-function buildReportHtml(store, year = store.taxYear) {
-  const transactions = transactionsForYear(store, year);
+function sortReportTransactions(store, transactions, sort = {}) {
+  const key = ['date', 'type', 'company', 'category', 'description', 'amount', 'businessUse', 'allocated', 'homeOffice', 'paid', 'notes'].includes(sort.key) ? sort.key : 'date';
+  const direction = sort.direction === 'desc' ? -1 : 1;
+  const companies = new Map(store.companies.map((item) => [item.id, item.name]));
+  const categories = new Map(store.categories.map((item) => [item.id, item.name]));
+  const value = (transaction) => ({
+    date: transaction.date || '', type: transaction.type || '', company: companies.get(transaction.companyId) || 'Unknown company',
+    category: categories.get(transaction.categoryId) || 'Unknown category', description: transaction.description || '',
+    amount: transaction.amountCents || 0, businessUse: Number(transaction.businessUsePercent || 0),
+    allocated: businessAmountCents(transaction), homeOffice: transaction.homeOfficeRelated ? 'Yes' : 'No',
+    paid: transaction.paidDate || '', notes: transaction.notes || ''
+  })[key];
+  return [...transactions].sort((a, b) => {
+    const left = value(a); const right = value(b);
+    const result = typeof left === 'number' && typeof right === 'number' ? left - right : String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: 'base' });
+    return result * direction || String(a.id).localeCompare(String(b.id));
+  });
+}
+
+function buildReportHtml(store, year = store.taxYear, sort = {}) {
+  const transactions = sortReportTransactions(store, transactionsForYear(store, year), sort);
   const reportStore = { ...store, transactions };
   const summary = calculateSummary(reportStore, year);
   const categoryRows = summary.byCategory.map((row) => `<tr><td>${escapeHtml(row.type === 'income' ? 'Income' : 'Expense')}</td><td>${escapeHtml(row.name)}</td><td class="money">${formatCurrency(row.amountCents)}</td><td class="money">${row.type === 'expense' ? formatCurrency(row.allocatedCents) : '—'}</td></tr>`).join('');
   const companyRows = summary.byCompany.map((row) => `<tr><td>${escapeHtml(row.name)}</td><td class="money">${formatCurrency(row.incomeCents)}</td><td class="money">${formatCurrency(row.expenseCents)}</td></tr>`).join('');
-  const transactionRows = [...transactions].sort((a, b) => a.date.localeCompare(b.date) || a.type.localeCompare(b.type)).map((transaction) => {
+  const transactionRows = transactions.map((transaction) => {
     const company = store.companies.find((item) => item.id === transaction.companyId)?.name || 'Unknown company';
     const category = store.categories.find((item) => item.id === transaction.categoryId)?.name || 'Unknown category';
     const allocated = transaction.type === 'expense' ? businessAmountCents(transaction) : 0;
@@ -310,9 +329,9 @@ function buildReportHtml(store, year = store.taxYear) {
   </body></html>`;
 }
 
-function serializeCsv(store, year = store.taxYear) {
+function serializeCsv(store, year = store.taxYear, sort = {}) {
   const headers = ['Date', 'Income/Expense', 'Company/source', 'Category', 'Description', 'Amount billed', 'Business use %', 'Allocated business amount', 'Home office related', 'Paid date', 'Amount paid', 'Paid difference', 'Convenience fee', 'Notes'];
-  const rows = [...transactionsForYear(store, year)].sort((a, b) => a.date.localeCompare(b.date)).map((transaction) => {
+  const rows = sortReportTransactions(store, transactionsForYear(store, year), sort).map((transaction) => {
     const company = store.companies.find((item) => item.id === transaction.companyId)?.name || 'Unknown company';
     const category = store.categories.find((item) => item.id === transaction.categoryId)?.name || 'Unknown category';
     const paidAmount = Number.isInteger(transaction.paidAmountCents) ? transaction.paidAmountCents : null;

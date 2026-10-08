@@ -3,7 +3,7 @@
 const TAX_YEAR = 2025;
 const NEW_COMPANY = '__create__';
 const DEFAULT_STORAGE_SETTINGS = { closeBehavior: 'ask', backupRetention: 7, backupReminderDays: 30, lastManualBackupAt: '' };
-const state = { store: null, workspace: { configured: false, available: false, path: '', storage: {}, storageSettings: { ...DEFAULT_STORAGE_SETTINGS } }, view: 'dashboard', selectedYear: 2025, transactionDraft: null, phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, companionLastSent: false, companionAppendNext: false, pendingPhonePhoto: null, paymentModal: null, workUseModal: false, receiptEditor: null, companionImageEditor: null, cropDrag: null, descriptionModal: false, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, receiptZoom: 1, appVersion: '0.4.18', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
+const state = { store: null, workspace: { configured: false, available: false, path: '', storage: {}, storageSettings: { ...DEFAULT_STORAGE_SETTINGS } }, view: 'dashboard', selectedYear: 2025, transactionDraft: null, reportPreview: false, reportSortKey: 'date', reportSortDirection: 'asc', phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, companionLastSent: false, companionAppendNext: false, pendingPhonePhoto: null, paymentModal: null, workUseModal: false, receiptEditor: null, companionImageEditor: null, cropDrag: null, descriptionModal: false, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, receiptZoom: 1, appVersion: '0.4.19', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
 let companionPollTimer;
 let pairingPollTimer;
 let qrScannerStream;
@@ -41,10 +41,12 @@ function bindEvents() {
   document.addEventListener('change', (event) => {
     if (event.target.id === 'year-select') { state.selectedYear = event.target.value === 'all' ? 'all' : Number(event.target.value); render(); }
     if (event.target.id === 'transaction-type') {
+      captureTransactionDraftFromForm();
       state.transactionDraft.type = event.target.value;
       state.transactionDraft.categoryId = '';
       render();
     }
+    if (event.target.id === 'transaction-category') captureTransactionDraftFromForm();
     if (event.target.id === 'transaction-description-select') {
       captureTransactionDraftFromForm();
       state.transactionDraft.description = event.target.value === 'Other' ? '' : event.target.value;
@@ -115,7 +117,7 @@ function bindEvents() {
     if (event.target.id === 'transaction-category' && /^[a-z]$/i.test(event.key)) {
       const categorySelect = event.target;
       const match = [...categorySelect.options].find((option) => option.textContent.trim().toLowerCase().startsWith(event.key.toLowerCase()) && option.value);
-      if (match) { event.preventDefault(); categorySelect.value = match.value; }
+      if (match) { event.preventDefault(); categorySelect.value = match.value; captureTransactionDraftFromForm(); }
     }
     if (event.key === 'Enter' && state.transactionDraft && event.target.closest('#transaction-form') && event.target.tagName !== 'TEXTAREA') {
       event.preventDefault(); document.getElementById('transaction-form')?.requestSubmit(); return;
@@ -123,7 +125,7 @@ function bindEvents() {
     if (event.ctrlKey && event.key.toLowerCase() === 'n') { event.preventDefault(); openTransaction('expense'); }
     else if (event.ctrlKey && event.key.toLowerCase() === 's' && state.transactionDraft) { event.preventDefault(); document.getElementById('transaction-form')?.requestSubmit(); }
     else if (event.ctrlKey && /^[1-4]$/.test(event.key)) { event.preventDefault(); state.view = ['dashboard', 'transactions', 'companies', 'reports'][Number(event.key) - 1]; state.transactionDraft = null; render(); }
-    else if (event.key === 'Escape') { if (state.qrScanner || state.paymentModal || state.workUseModal || state.receiptEditor || state.companionImageEditor || state.descriptionModal || state.companyModal || state.phoneCapture || state.phonePairing || state.companionPairing || state.aboutOpen || state.shortcutsOpen) { if (state.qrScanner) stopQrScanner(); if (state.phoneCapture) window.taxLedger.stopPhoneCapture(); state.companyModal = null; state.phoneCapture = null; state.phonePairing = null; state.companionPairing = false; state.companionPairingData = null; state.qrScanner = false; state.paymentModal = null; state.workUseModal = false; state.receiptEditor = null; state.companionImageEditor = null; state.cropDrag = null; state.descriptionModal = false; state.aboutOpen = false; state.shortcutsOpen = false; render(); } else if (state.transactionDraft) { state.transactionDraft = null; render(); } else if (state.openMenu) { state.openMenu = null; render(); } }
+    else if (event.key === 'Escape') { if (state.reportPreview || state.qrScanner || state.paymentModal || state.workUseModal || state.receiptEditor || state.companionImageEditor || state.descriptionModal || state.companyModal || state.phoneCapture || state.phonePairing || state.companionPairing || state.aboutOpen || state.shortcutsOpen) { if (state.qrScanner) stopQrScanner(); if (state.phoneCapture) window.taxLedger.stopPhoneCapture(); state.reportPreview = false; state.companyModal = null; state.phoneCapture = null; state.phonePairing = null; state.companionPairing = false; state.companionPairingData = null; state.qrScanner = false; state.paymentModal = null; state.workUseModal = false; state.receiptEditor = null; state.companionImageEditor = null; state.cropDrag = null; state.descriptionModal = false; state.aboutOpen = false; state.shortcutsOpen = false; render(); } else if (state.transactionDraft) { state.transactionDraft = null; render(); } else if (state.openMenu) { state.openMenu = null; render(); } }
   });
 }
 
@@ -181,11 +183,20 @@ async function handleAction(action, element) {
   if (action === 'clear-companies') await clearCompanyData();
   if (action === 'toggle-category') await toggleCategory(element.dataset.id);
   if (action === 'export-pdf') await exportFile('pdf');
+  if (action === 'preview-report') { state.reportPreview = true; state.reportSortKey = 'date'; state.reportSortDirection = 'asc'; render(); }
+  if (action === 'close-report-preview') { state.reportPreview = false; render(); }
+  if (action === 'report-sort') {
+    const key = element.dataset.key;
+    if (state.reportSortKey === key) state.reportSortDirection = state.reportSortDirection === 'asc' ? 'desc' : 'asc';
+    else { state.reportSortKey = key; state.reportSortDirection = 'asc'; }
+    render();
+  }
+  if (action === 'print-report') await printReport();
   if (action === 'export-csv') await exportFile('csv');
   if (action === 'backup-json') await exportFile('json');
   if (action === 'restore-json') await restoreJson();
   if (action === 'open-folder') await window.taxLedger.openFolder(element.dataset.path);
-  if (action === 'open-workspace') { if (state.workspace.configured && state.workspace.available) await window.taxLedger.openFolder(state.workspace.path); else toast('Choose a workspace folder first.', true); }
+  if (action === 'open-workspace') { if (state.workspace.configured && state.workspace.available) await window.taxLedger.openFolder(state.workspace.path); else toast('Choose a data folder first.', true); }
   if (action === 'choose-workspace') await chooseWorkspace();
 }
 
@@ -199,13 +210,13 @@ function render() {
   populateYearSelector();
   document.getElementById('workspace-root').innerHTML = renderWorkspaceNotice();
   document.getElementById('view-root').innerHTML = window.taxLedger.isMobileCompanion && state.view === 'dashboard' ? renderCompanionDashboard() : state.view === 'dashboard' ? renderDashboard() : state.view === 'transactions' ? renderTransactions() : state.view === 'companies' ? renderCompanies() : renderReports();
-  document.getElementById('modal-root').innerHTML = state.pendingPhonePhoto ? renderPendingPhonePhotoModal() : state.receiptEditor ? renderReceiptEditorModal() : state.companionImageEditor ? renderCompanionImageEditorModal() : state.descriptionModal ? renderDescriptionModal() : state.companyModal ? renderCompanyModal() : state.phonePairing ? renderPhonePairingModal() : state.qrScanner ? renderQrScannerModal() : state.paymentModal ? renderPaymentModal() : state.workUseModal ? renderWorkUseModal() : state.companionPairing ? renderCompanionPairingModal() : state.phoneCapture ? renderPhoneCaptureModal() : state.aboutOpen ? renderAboutModal() : state.shortcutsOpen ? renderShortcutsModal() : '';
+  document.getElementById('modal-root').innerHTML = state.reportPreview ? renderReportPreviewModal() : state.pendingPhonePhoto ? renderPendingPhonePhotoModal() : state.receiptEditor ? renderReceiptEditorModal() : state.companionImageEditor ? renderCompanionImageEditorModal() : state.descriptionModal ? renderDescriptionModal() : state.companyModal ? renderCompanyModal() : state.phonePairing ? renderPhonePairingModal() : state.qrScanner ? renderQrScannerModal() : state.paymentModal ? renderPaymentModal() : state.workUseModal ? renderWorkUseModal() : state.companionPairing ? renderCompanionPairingModal() : state.phoneCapture ? renderPhoneCaptureModal() : state.aboutOpen ? renderAboutModal() : state.shortcutsOpen ? renderShortcutsModal() : '';
 }
 
 function renderWorkspaceNotice() {
   if (window.taxLedger.isMobileCompanion || (state.workspace.configured && state.workspace.available)) return '';
   const unavailable = state.workspace.configured && !state.workspace.available;
-  return `<section class="workspace-warning" role="alert"><div><strong>${unavailable ? 'Workspace folder unavailable' : 'Create a workspace folder before entering more records'}</strong><p>${unavailable ? `TaxMan cannot reach <strong>${escapeHtml(state.workspace.path)}</strong>. Choose a new folder so saved transactions are written somewhere you can back up.` : 'TaxMan is currently using its internal app storage. Choose a local folder so your ledger and automatic backup are easy to find and protect in a disaster.'}</p></div><button type="button" class="danger-button" data-action="choose-workspace">${unavailable ? 'Choose another folder' : 'Choose workspace folder'}</button></section>`;
+  return `<section class="workspace-warning" role="alert"><div><strong>${unavailable ? 'Data folder unavailable' : 'Choose a data folder before entering more records'}</strong><p>${unavailable ? `TaxMan cannot reach <strong>${escapeHtml(state.workspace.path)}</strong>. Choose a new folder so saved transactions are written somewhere you can back up.` : 'TaxMan is currently using its internal app storage. Choose a local folder so your ledger and automatic backup are easy to find and protect in a disaster.'}</p></div><button type="button" class="danger-button" data-action="choose-workspace">${unavailable ? 'Choose another folder' : 'Choose data folder'}</button></section>`;
 }
 
 async function chooseWorkspace() {
@@ -216,9 +227,9 @@ async function chooseWorkspace() {
     if (result?.workspace) state.workspace = result.workspace;
     if (result?.store) state.store = result.store;
     state.selectedYear = bestYearForStore(state.store, state.store.taxYear || 2025);
-    toast(`Workspace folder set to ${state.workspace.path}.`);
+    toast(`Data folder set to ${state.workspace.path}.`);
     render();
-  } catch (error) { toast(error.message || 'Workspace folder could not be set.', true); }
+  } catch (error) { toast(error.message || 'Data folder could not be set.', true); }
 }
 
 async function handleCloseRequest() {
@@ -416,7 +427,63 @@ function backupReminderMarkup(settings) {
   const last = settings.lastManualBackupAt ? new Date(settings.lastManualBackupAt) : null;
   const overdue = !last || Number.isNaN(last.getTime()) || Date.now() - last.getTime() >= days * 86400000;
   if (!overdue) return '';
-  return `<div class="notice backup-reminder"><strong>Backup reminder:</strong> ${last ? `Your last manual JSON backup was more than ${days} days ago.` : 'You have not created a manual JSON backup yet.'} Use <strong>Create JSON backup</strong> to keep a copy somewhere outside this workspace.</div>`;
+  return `<div class="notice backup-reminder"><strong>Backup reminder:</strong> ${last ? `Your last manual JSON backup was more than ${days} days ago.` : 'You have not created a manual JSON backup yet.'} Use <strong>Create JSON backup</strong> to keep a copy somewhere outside the TaxMan data folder.</div>`;
+}
+
+function reportTransactions() {
+  const companyName = (transaction) => findCompany(transaction.companyId)?.name || 'Unknown company';
+  const categoryName = (transaction) => findCategory(transaction.categoryId)?.name || 'Unknown category';
+  const values = {
+    date: (item) => item.date || '', type: (item) => item.type === 'income' ? 'Income' : 'Expense',
+    company: companyName, category: categoryName, description: (item) => item.description || '',
+    amount: (item) => item.amountCents || 0, businessUse: (item) => Number(item.businessUsePercent || 0),
+    allocated: (item) => businessAmount(item), homeOffice: (item) => item.homeOfficeRelated ? 'Yes' : 'No',
+    paid: (item) => item.paidDate || '', notes: (item) => item.notes || ''
+  };
+  const direction = state.reportSortDirection === 'desc' ? -1 : 1;
+  return transactionsForYear(state.store, state.selectedYear).sort((a, b) => {
+    const left = values[state.reportSortKey]?.(a) ?? '';
+    const right = values[state.reportSortKey]?.(b) ?? '';
+    const primary = typeof left === 'number' && typeof right === 'number' ? left - right : String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: 'base' });
+    return primary * direction || String(a.id).localeCompare(String(b.id));
+  });
+}
+
+function reportSortButton(key, label) {
+  const active = state.reportSortKey === key;
+  const arrow = active ? (state.reportSortDirection === 'asc' ? ' ▲' : ' ▼') : '';
+  return `<button type="button" class="report-sort-button" data-action="report-sort" data-key="${key}" aria-label="Sort by ${label}" aria-pressed="${active}">${label}${arrow}</button>`;
+}
+
+function renderReportPreviewModal() {
+  const transactions = reportTransactions();
+  const summary = calculateSummary(state.store, state.selectedYear);
+  const paidCell = (transaction) => {
+    if (!transaction.paidDate) return '—';
+    const paidAmount = Number.isInteger(transaction.paidAmountCents) ? transaction.paidAmountCents : null;
+    const difference = paidAmount === null ? 0 : paidAmount - transaction.amountCents;
+    const note = difference ? `${money(paidAmount)}${transaction.convenienceFee ? ' (convenience fee)' : ''}${transaction.paidDifferenceNote ? ` · ${transaction.paidDifferenceNote}` : ''}` : '';
+    return `${escapeHtml(formatDateDisplay(transaction.paidDate))}${note ? `<br>${escapeHtml(note)}` : ''}`;
+  };
+  const categories = new Map();
+  const companies = new Map();
+  for (const transaction of transactions) {
+    const typeName = transaction.type === 'income' ? 'Income' : 'Expense';
+    const category = findCategory(transaction.categoryId)?.name || 'Unknown category';
+    const categoryKey = `${typeName}:${category}`;
+    const categoryRow = categories.get(categoryKey) || { type: typeName, name: category, amount: 0, allocated: 0 };
+    categoryRow.amount += transaction.amountCents || 0;
+    categoryRow.allocated += businessAmount(transaction);
+    categories.set(categoryKey, categoryRow);
+    const company = findCompany(transaction.companyId)?.name || 'Unknown company';
+    const companyRow = companies.get(company) || { name: company, income: 0, expense: 0 };
+    companyRow[transaction.type] += transaction.amountCents || 0;
+    companies.set(company, companyRow);
+  }
+  const rows = transactions.map((transaction) => `<tr><td>${escapeHtml(formatDateDisplay(transaction.date))}</td><td>${transaction.type === 'income' ? 'Income' : 'Expense'}</td><td>${escapeHtml(findCompany(transaction.companyId)?.name || 'Unknown company')}</td><td>${escapeHtml(findCategory(transaction.categoryId)?.name || 'Unknown category')}</td><td>${escapeHtml(transaction.description)}</td><td class="money">${money(transaction.amountCents)}</td><td class="money">${transaction.type === 'expense' ? `${formatPercent(transaction.businessUsePercent)}` : '—'}</td><td class="money">${transaction.type === 'expense' ? money(businessAmount(transaction)) : '—'}</td><td>${transaction.homeOfficeRelated ? 'Yes' : '—'}</td><td>${paidCell(transaction)}</td><td>${escapeHtml(transaction.notes || '—')}</td></tr>`).join('');
+  const categoryRows = [...categories.values()].sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name)).map((row) => `<tr><td>${row.type}</td><td>${escapeHtml(row.name)}</td><td class="money">${money(row.amount)}</td><td class="money">${row.type === 'Expense' ? money(row.allocated) : '—'}</td></tr>`).join('');
+  const companyRows = [...companies.values()].sort((a, b) => a.name.localeCompare(b.name)).map((row) => `<tr><td>${escapeHtml(row.name)}</td><td class="money">${money(row.income)}</td><td class="money">${money(row.expense)}</td></tr>`).join('');
+  return `<div class="modal-backdrop report-preview-backdrop"><section class="modal report-preview-modal" role="dialog" aria-modal="true" aria-labelledby="report-preview-title"><div class="modal-header"><div><span class="eyebrow">Printable report</span><h2 id="report-preview-title">TaxMan ${escapeHtml(String(state.selectedYear))} report preview</h2></div><button class="close-button" data-action="close-report-preview" aria-label="Close">×</button></div><div class="modal-body"><div class="cards report-preview-cards">${metric('Gross income', money(summary.incomeCents), '', 'accent')}${metric('All expenses', money(summary.expenseCents), '', 'orange')}${metric('Allocated expenses', money(summary.allocatedExpenseCents), '', 'green')}${metric('Net before tax', money(summary.netBeforeTaxCents), '', 'purple')}</div><section class="report-preview-home-office"><h3>Home-office-related costs</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Recorded total</th><th>Allocated business amount</th><th>Entries marked home office</th></tr></thead><tbody><tr><td class="money">${money(summary.homeOfficeCents)}</td><td class="money">${money(summary.homeOfficeAllocatedCents)}</td><td>${summary.homeOfficeCount}</td></tr></tbody></table></div></section><div class="report-preview-totals"><section><h3>Totals by category</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Type</th><th>Category</th><th>Recorded</th><th>Allocated</th></tr></thead><tbody>${categoryRows || '<tr><td colspan="4">No transactions recorded.</td></tr>'}</tbody></table></div></section><section><h3>Totals by company/source</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Company/source</th><th>Income</th><th>Expense</th></tr></thead><tbody>${companyRows || '<tr><td colspan="3">No transactions recorded.</td></tr>'}</tbody></table></div></section></div><div class="report-preview-ledger-heading"><div><h3>Transaction detail</h3><p class="muted">${transactions.length} transaction${transactions.length === 1 ? '' : 's'} · Select any column heading to sort.</p></div></div><div class="table-wrap report-preview-table-wrap"><table class="data-table report-preview-table"><thead><tr><th>${reportSortButton('date', 'Date')}</th><th>${reportSortButton('type', 'Type')}</th><th>${reportSortButton('company', 'Company/source')}</th><th>${reportSortButton('category', 'Category')}</th><th>${reportSortButton('description', 'Description')}</th><th>${reportSortButton('amount', 'Amount')}</th><th>${reportSortButton('businessUse', 'Business use')}</th><th>${reportSortButton('allocated', 'Allocated')}</th><th>${reportSortButton('homeOffice', 'Home office')}</th><th>${reportSortButton('paid', 'Paid')}</th><th>${reportSortButton('notes', 'Notes')}</th></tr></thead><tbody>${rows || '<tr><td colspan="11">No transactions recorded.</td></tr>'}</tbody></table></div><p class="report-note"><strong>Preparer’s note:</strong> This report reflects recorded amounts and entered business-use percentages. Confirm final tax treatment and filing decisions with your tax preparer.</p><div class="report-preview-actions"><button type="button" class="secondary-button" data-action="print-report">Print…</button><button type="button" class="secondary-button" data-action="export-csv">Export CSV</button><button type="button" class="primary-button" data-action="export-pdf">Export PDF…</button></div><p class="muted report-print-hint">Print opens your printer selection. Choose an installed printer or a PDF printer; Export PDF saves a PDF file directly.</p></div></section></div>`;
 }
 
 function renderReports() {
@@ -426,8 +493,8 @@ function renderReports() {
   const reportNotices = [state.lastPdfPath ? `<div class="notice success" style="margin-top:15px">PDF saved to <strong>${escapeHtml(state.lastPdfPath)}</strong> <button class="icon-button" data-action="open-folder" data-path="${escapeAttr(state.lastPdfPath)}">Show in folder</button></div>` : '', state.lastCsvPath ? `<div class="notice success" style="margin-top:15px">CSV saved to <strong>${escapeHtml(state.lastCsvPath)}</strong> <button class="icon-button" data-action="open-folder" data-path="${escapeAttr(state.lastCsvPath)}">Show in folder</button></div>` : ''].join('');
   const backupNotice = state.lastBackupPath ? `<div class="notice success" style="margin-top:15px">Backup saved to <strong>${escapeHtml(state.lastBackupPath)}</strong> <button class="icon-button" data-action="open-folder" data-path="${escapeAttr(state.lastBackupPath)}">Show in folder</button></div>` : '';
   const lastBackup = settings.lastManualBackupAt ? new Date(settings.lastManualBackupAt).toLocaleString('en-US') : 'None yet';
-  return `<div class="grid-2"><section class="panel"><div class="panel-header"><div><h2>${selectedYearLabel()} tax-preparer report</h2><p>Summary totals followed by a spreadsheet-style transaction ledger.</p></div></div><div class="panel-body"><div class="report-actions"><button class="primary-button" data-action="export-pdf">Export PDF report</button><button class="secondary-button" data-action="export-csv">Export CSV ledger</button></div>${reportNotices}<p class="report-note" style="margin-top:20px"><strong>Important:</strong> The report shows recorded amounts and your entered business-use percentages. It does not decide what is deductible or complete a tax return.</p></div></section><section class="panel"><div class="panel-header"><div><h2>Backup and restore</h2><p>Keep a copy somewhere safe before sharing your report.</p></div></div><div class="panel-body"><div class="report-actions"><button class="secondary-button" data-action="backup-json">Create JSON backup</button><button class="secondary-button" data-action="restore-json">Restore JSON backup</button></div>${backupNotice}<p class="muted" style="margin-top:18px">TaxMan keeps one recovery copy automatically when records are saved. Your companies, categories, transactions, and bill photos are included.</p></div></section></div>
-  <section class="panel storage-panel" style="margin-top:20px"><div class="panel-header"><div><h2>Storage &amp; backups</h2><p>See what this workspace uses and control automatic cleanup.</p></div><button class="secondary-button" data-action="open-workspace">Open workspace folder</button></div><div class="panel-body"><div class="cards storage-cards">${metric('Current ledger', formatBytes(storage.currentBytes), 'data.json', 'accent')}${metric('Recovery backup', formatBytes(storage.recoveryBytes), 'data.backup.json', 'green')}${metric('Backup folder', formatBytes(storage.backupFolderBytes), `${storage.backupFileCount || 0} saved snapshot${storage.backupFileCount === 1 ? '' : 's'}`, 'orange')}${metric('Workspace folder', formatBytes(storage.workspaceBytes), `${storage.workspaceFileCount || 0} files total`, 'purple')}</div>${backupReminderMarkup(settings)}<form id="storage-settings-form" class="storage-settings"><div class="field"><label for="close-behavior">When TaxMan closes with an open form</label><select id="close-behavior" name="closeBehavior"><option value="ask" ${settings.closeBehavior === 'ask' ? 'selected' : ''}>Ask before discarding changes</option><option value="save" ${settings.closeBehavior === 'save' ? 'selected' : ''}>Save a complete transaction automatically</option><option value="discard" ${settings.closeBehavior === 'discard' ? 'selected' : ''}>Discard open form changes automatically</option></select><small>Saved transactions are already written immediately. This controls only an unfinished form.</small></div><div class="field"><label for="backup-retention">Automatic snapshot retention</label><select id="backup-retention" name="backupRetention"><option value="0" ${Number(settings.backupRetention) === 0 ? 'selected' : ''}>Off — keep only the recovery backup</option><option value="3" ${Number(settings.backupRetention) === 3 ? 'selected' : ''}>Keep 3 snapshots</option><option value="7" ${Number(settings.backupRetention) === 7 ? 'selected' : ''}>Keep 7 snapshots</option><option value="30" ${Number(settings.backupRetention) === 30 ? 'selected' : ''}>Keep 30 snapshots</option><option value="90" ${Number(settings.backupRetention) === 90 ? 'selected' : ''}>Keep 90 snapshots</option></select><small>Snapshots use names such as TaxMan-backup-20260918-123456-123.json and are pruned automatically.</small></div><div class="field"><label for="backup-reminder-days">Manual backup reminder</label><select id="backup-reminder-days" name="backupReminderDays"><option value="0" ${Number(settings.backupReminderDays) === 0 ? 'selected' : ''}>Off</option><option value="30" ${Number(settings.backupReminderDays) === 30 ? 'selected' : ''}>Every 30 days</option><option value="60" ${Number(settings.backupReminderDays) === 60 ? 'selected' : ''}>Every 60 days</option><option value="90" ${Number(settings.backupReminderDays) === 90 ? 'selected' : ''}>Every 90 days</option></select><small>Last manual backup: ${escapeHtml(lastBackup)}</small></div><div class="form-actions"><button type="submit" class="primary-button">Save storage settings</button></div></form></div></section>
+  return `<div class="grid-2"><section class="panel"><div class="panel-header"><div><h2>${selectedYearLabel()} tax-preparer report</h2><p>Review, sort, print, or export a complete report.</p></div></div><div class="panel-body"><div class="report-actions"><button class="primary-button" data-action="preview-report">Preview report</button><button class="secondary-button" data-action="export-csv">Export CSV ledger</button></div>${reportNotices}<p class="report-note" style="margin-top:20px"><strong>Important:</strong> The report shows recorded amounts and your entered business-use percentages. It does not decide what is deductible or complete a tax return.</p></div></section><section class="panel"><div class="panel-header"><div><h2>Backup and restore</h2><p>Keep a copy somewhere safe before sharing your report.</p></div></div><div class="panel-body"><div class="report-actions"><button class="secondary-button" data-action="backup-json">Create JSON backup</button><button class="secondary-button" data-action="restore-json">Restore JSON backup</button></div>${backupNotice}<p class="muted" style="margin-top:18px">TaxMan keeps one recovery copy automatically when records are saved. Your companies, categories, transactions, and bill photos are included.</p></div></section></div>
+  <section class="panel storage-panel" style="margin-top:20px"><div class="panel-header"><div><h2>Storage &amp; backups</h2><p>See what TaxMan stores and control automatic cleanup.</p></div><button class="secondary-button" data-action="open-workspace">Open data folder</button></div><div class="panel-body"><div class="cards storage-cards">${metric('Current ledger', formatBytes(storage.currentBytes), 'data.json', 'accent')}${metric('Recovery backup', formatBytes(storage.recoveryBytes), 'data.backup.json', 'green')}${metric('Backup folder', formatBytes(storage.backupFolderBytes), `${storage.backupFileCount || 0} saved snapshot${storage.backupFileCount === 1 ? '' : 's'}`, 'orange')}</div>${backupReminderMarkup(settings)}<form id="storage-settings-form" class="storage-settings"><div class="field"><label for="close-behavior">When TaxMan closes with an open form</label><select id="close-behavior" name="closeBehavior"><option value="ask" ${settings.closeBehavior === 'ask' ? 'selected' : ''}>Ask before discarding changes</option><option value="save" ${settings.closeBehavior === 'save' ? 'selected' : ''}>Save a complete transaction automatically</option><option value="discard" ${settings.closeBehavior === 'discard' ? 'selected' : ''}>Discard open form changes automatically</option></select><small>Saved transactions are already written immediately. This controls only an unfinished form.</small></div><div class="field"><label for="backup-retention">Automatic snapshot retention</label><select id="backup-retention" name="backupRetention"><option value="0" ${Number(settings.backupRetention) === 0 ? 'selected' : ''}>Off — keep only the recovery backup</option><option value="3" ${Number(settings.backupRetention) === 3 ? 'selected' : ''}>Keep 3 snapshots</option><option value="7" ${Number(settings.backupRetention) === 7 ? 'selected' : ''}>Keep 7 snapshots</option><option value="30" ${Number(settings.backupRetention) === 30 ? 'selected' : ''}>Keep 30 snapshots</option><option value="90" ${Number(settings.backupRetention) === 90 ? 'selected' : ''}>Keep 90 snapshots</option></select><small>Snapshots use names such as TaxMan-backup-20260918-123456-123.json and are pruned automatically.</small></div><div class="field"><label for="backup-reminder-days">Manual backup reminder</label><select id="backup-reminder-days" name="backupReminderDays"><option value="0" ${Number(settings.backupReminderDays) === 0 ? 'selected' : ''}>Off</option><option value="30" ${Number(settings.backupReminderDays) === 30 ? 'selected' : ''}>Every 30 days</option><option value="60" ${Number(settings.backupReminderDays) === 60 ? 'selected' : ''}>Every 60 days</option><option value="90" ${Number(settings.backupReminderDays) === 90 ? 'selected' : ''}>Every 90 days</option></select><small>Last manual backup: ${escapeHtml(lastBackup)}</small></div><div class="form-actions"><button type="submit" class="primary-button">Save storage settings</button></div></form></div></section>
   <section class="panel" style="margin-top:20px"><div class="panel-header"><div><h2>Report preview</h2><p>These figures will appear in the PDF summary.</p></div></div><div class="panel-body"><div class="cards" style="margin-bottom:0">${metric('Gross income', money(summary.incomeCents), '', 'accent')}${metric('All expenses', money(summary.expenseCents), '', 'orange')}${metric('Allocated expenses', money(summary.allocatedExpenseCents), '', 'green')}${metric('Home office allocated', money(summary.homeOfficeAllocatedCents), '', 'purple')}</div></div></section>`;
 }
 
@@ -1031,7 +1098,8 @@ async function saveLedger() {
 
 async function exportFile(kind) {
   try {
-    const result = kind === 'pdf' ? await window.taxLedger.exportPdf(state.store, state.selectedYear) : kind === 'csv' ? await window.taxLedger.exportCsv(state.store, state.selectedYear) : await window.taxLedger.exportJson(state.store);
+    const sort = { key: state.reportSortKey, direction: state.reportSortDirection };
+    const result = kind === 'pdf' ? await window.taxLedger.exportPdf(state.store, state.selectedYear, sort) : kind === 'csv' ? await window.taxLedger.exportCsv(state.store, state.selectedYear, sort) : await window.taxLedger.exportJson(state.store);
     if (!result.canceled) {
       if (kind === 'pdf') state.lastPdfPath = result.path;
       else if (kind === 'csv') state.lastCsvPath = result.path;
@@ -1040,6 +1108,14 @@ async function exportFile(kind) {
       render();
     }
   } catch (error) { toast(error.message || 'Export failed.', true); }
+}
+
+async function printReport() {
+  try {
+    const result = await window.taxLedger.printReport(state.store, state.selectedYear, { key: state.reportSortKey, direction: state.reportSortDirection });
+    if (result?.error) toast(`The report could not be printed: ${result.error}`, true);
+    else if (!result?.canceled) toast('Report sent to the selected printer.');
+  } catch (error) { toast(error.message || 'The report could not be printed.', true); }
 }
 
 async function restoreJson() {

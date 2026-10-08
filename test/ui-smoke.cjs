@@ -62,6 +62,46 @@ async function main() {
     set('transaction-description', 'Smoke test expense');
     set('transaction-amount', '12.50');
     set('transaction-notes', 'Keep this note while calculating');
+    document.getElementById('business-use').value = '42';
+    const formBeforeSoftwareCategorySelection = document.getElementById('transaction-form');
+    set('transaction-category', 'expense-software');
+    checks.softwareCategoryKeepsEveryTransactionField = document.getElementById('transaction-date')?.value === '090826'
+      && document.getElementById('transaction-company')?.value !== ''
+      && document.getElementById('transaction-category')?.value === 'expense-software'
+      && document.getElementById('transaction-description')?.value === 'Smoke test expense'
+      && document.getElementById('transaction-amount')?.value === '12.50'
+      && document.getElementById('business-use')?.value === '42'
+      && document.getElementById('transaction-notes')?.value === 'Keep this note while calculating'
+      && formBeforeSoftwareCategorySelection === document.getElementById('transaction-form');
+    set('transaction-category', 'expense-office-supplies');
+    document.getElementById('transaction-description-select').value = 'Software';
+    document.getElementById('transaction-description-select').dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    checks.softwareDescriptionKeepsEveryTransactionField = document.getElementById('transaction-date')?.value === '090826'
+      && document.getElementById('transaction-company')?.value !== ''
+      && document.getElementById('transaction-category')?.value === 'expense-office-supplies'
+      && document.getElementById('transaction-description')?.value === 'Software'
+      && document.getElementById('transaction-amount')?.value === '12.50'
+      && document.getElementById('business-use')?.value === '42'
+      && document.getElementById('transaction-notes')?.value === 'Keep this note while calculating';
+    document.getElementById('transaction-type').value = 'income';
+    document.getElementById('transaction-type').dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    checks.switchingTransactionTypeKeepsEnteredData = document.getElementById('transaction-date')?.value === '090826'
+      && document.getElementById('transaction-company')?.value !== ''
+      && document.getElementById('transaction-description')?.value === 'Software'
+      && document.getElementById('transaction-amount')?.value === '12.50'
+      && document.getElementById('transaction-notes')?.value === 'Keep this note while calculating';
+    document.getElementById('transaction-type').value = 'expense';
+    document.getElementById('transaction-type').dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    checks.expenseTypeSwitchClearsOnlyIncompatibleCategory = document.getElementById('transaction-category')?.value === ''
+      && document.getElementById('transaction-date')?.value === '090826'
+      && document.getElementById('transaction-company')?.value !== ''
+      && document.getElementById('transaction-description')?.value === 'Software'
+      && document.getElementById('transaction-amount')?.value === '12.50'
+      && document.getElementById('transaction-notes')?.value === 'Keep this note while calculating';
+    set('transaction-category', 'expense-office-supplies');
+    document.getElementById('transaction-description-select').value = 'Other';
+    document.getElementById('transaction-description-select').dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    set('transaction-description', 'Smoke test expense');
     document.querySelector('[data-action="calculate-business-use"]')?.click(); await wait();
     document.getElementById('work-use-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait();
     checks.workUseKeepsUnsavedTransaction = document.getElementById('transaction-date')?.value === '090826'
@@ -127,7 +167,7 @@ async function main() {
 
     await window.taxLedger.testEmitMenuAction('show-about'); await wait();
     checks.helpMenuOpens = Boolean(document.querySelector('[aria-labelledby="about-title"]'));
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.18');
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.19');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
     await window.taxLedger.testEmitMenuAction('show-shortcuts'); await wait();
     checks.shortcutsUseClearRows = document.querySelectorAll('.shortcut-row').length === 7
@@ -140,15 +180,25 @@ async function main() {
     await window.taxLedger.testEmitMenuAction('view-reports'); await wait();
     checks.nativeViewActionWorks = document.getElementById('page-title').textContent === 'Reports & Backup';
 
-    checks.reportActionsPresent = ['export-pdf', 'export-csv', 'backup-json', 'restore-json'].every((action) => Boolean(document.querySelector('[data-action="' + action + '"]')));
-    checks.storagePanelShowsSizes = document.body.textContent.includes('Current ledger') && document.body.textContent.includes('Recovery backup') && document.body.textContent.includes('Backup folder') && Boolean(document.getElementById('storage-settings-form'));
+    checks.reportActionsPresent = ['preview-report', 'export-csv', 'backup-json', 'restore-json'].every((action) => Boolean(document.querySelector('[data-action="' + action + '"]')));
+    checks.storagePanelShowsLedgerAndBackupSizesWithoutFolderTotal = document.body.textContent.includes('Current ledger') && document.body.textContent.includes('Recovery backup') && document.body.textContent.includes('Backup folder') && !document.body.textContent.includes('Workspace folder') && Boolean(document.getElementById('storage-settings-form'));
     set('backup-retention', '3');
     document.getElementById('storage-settings-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait();
     checks.storageSettingsSave = document.body.textContent.includes('Storage settings saved.') || document.getElementById('backup-retention')?.value === '3';
+    document.querySelector('[data-action="preview-report"]').click(); await wait();
+    checks.reportPreviewShowsDetailsAndSortableColumns = Boolean(document.querySelector('[aria-labelledby="report-preview-title"]'))
+      && document.querySelectorAll('.report-preview-table tbody tr').length > 0
+      && document.querySelectorAll('.report-sort-button').length === 11;
+    document.querySelector('[data-action="report-sort"][data-key="amount"]').click(); await wait();
+    checks.reportColumnsSortByClick = document.querySelector('[data-action="report-sort"][data-key="amount"]')?.getAttribute('aria-pressed') === 'true'
+      && document.querySelector('[data-action="report-sort"][data-key="amount"]')?.textContent.includes('▲');
+    document.querySelector('[data-action="print-report"]').click(); await wait();
+    checks.reportOffersPrinterOutput = document.body.textContent.includes('Report sent to the selected printer.');
     document.querySelector('[data-action="export-pdf"]').click(); await wait();
     checks.pdfNoticeStaysWithReport = document.body.textContent.includes('PDF saved to test-report.pdf') && !document.querySelector('[data-action="backup-json"]').closest('.panel').textContent.includes('test-report.pdf');
+    document.querySelector('[data-action="close-report-preview"]').click(); await wait();
     document.querySelector('[data-action="backup-json"]').click(); await wait();
-    checks.backupNoticeStaysWithBackup = document.body.textContent.includes('Backup saved to test-backup.json') && !document.querySelector('[data-action="export-pdf"]').closest('.panel').textContent.includes('test-backup.json');
+    checks.backupNoticeStaysWithBackup = document.body.textContent.includes('Backup saved to test-backup.json') && !document.querySelector('[data-action="preview-report"]').closest('.panel').textContent.includes('test-backup.json');
     window.confirm = () => true;
     document.querySelector('[data-action="restore-json"]').click(); await wait();
     document.querySelector('[data-view="transactions"]').click(); await wait();
