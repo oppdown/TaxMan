@@ -122,7 +122,8 @@ function normalizeStore(input) {
       mailingCity: cleanText(company.mailingCity),
       mailingState: cleanText(company.mailingState),
       mailingPostalCode: cleanText(company.mailingPostalCode),
-      alwaysHomeOfficeRelated: Boolean(company.alwaysHomeOfficeRelated)
+      alwaysHomeOfficeRelated: Boolean(company.alwaysHomeOfficeRelated),
+      always100PercentBusinessUse: Boolean(company.always100PercentBusinessUse)
     })),
     categories: normalizedCategories,
     descriptions,
@@ -292,12 +293,29 @@ function sortReportTransactions(store, transactions, sort = {}) {
   });
 }
 
-function buildReportHtml(store, year = store.taxYear, sort = {}) {
+const REPORT_COLUMNS = [
+  ['date', 'Date'], ['type', 'Income/Expense'], ['company', 'Company/source'], ['category', 'Category'],
+  ['description', 'Description'], ['amount', 'Amount'], ['businessUse', 'Business use'],
+  ['allocated', 'Allocated'], ['homeOffice', 'Home office'], ['paid', 'Paid'], ['notes', 'Notes']
+];
+const REPORT_SECTIONS = ['summary', 'homeOffice', 'categories', 'companies', 'transactions'];
+
+function normalizeReportOptions(options = {}) {
+  const normalizeGroup = (keys, supplied) => Object.fromEntries(keys.map((key) => [key, typeof supplied?.[key] === 'boolean' ? supplied[key] : true]));
+  return {
+    sections: normalizeGroup(REPORT_SECTIONS, options.sections),
+    columns: normalizeGroup(REPORT_COLUMNS.map(([key]) => key), options.columns)
+  };
+}
+
+function buildReportHtml(store, year = store.taxYear, sort = {}, options) {
+  const selection = normalizeReportOptions(options);
   const transactions = sortReportTransactions(store, transactionsForYear(store, year), sort);
   const reportStore = { ...store, transactions };
   const summary = calculateSummary(reportStore, year);
   const categoryRows = summary.byCategory.map((row) => `<tr><td>${escapeHtml(row.type === 'income' ? 'Income' : 'Expense')}</td><td>${escapeHtml(row.name)}</td><td class="money">${formatCurrency(row.amountCents)}</td><td class="money">${row.type === 'expense' ? formatCurrency(row.allocatedCents) : '—'}</td></tr>`).join('');
   const companyRows = summary.byCompany.map((row) => `<tr><td>${escapeHtml(row.name)}</td><td class="money">${formatCurrency(row.incomeCents)}</td><td class="money">${formatCurrency(row.expenseCents)}</td></tr>`).join('');
+  const selectedColumns = REPORT_COLUMNS.filter(([key]) => selection.columns[key]);
   const transactionRows = transactions.map((transaction) => {
     const company = store.companies.find((item) => item.id === transaction.companyId)?.name || 'Unknown company';
     const category = store.categories.find((item) => item.id === transaction.categoryId)?.name || 'Unknown category';
@@ -305,8 +323,22 @@ function buildReportHtml(store, year = store.taxYear, sort = {}) {
      const paidAmount = Number.isInteger(transaction.paidAmountCents) ? transaction.paidAmountCents : null;
      const paidDifference = paidAmount === null ? 0 : paidAmount - transaction.amountCents;
      const paymentNote = paidDifference ? `${formatCurrency(paidAmount)}${transaction.convenienceFee ? ' (convenience fee)' : ''}${transaction.paidDifferenceNote ? ` · ${transaction.paidDifferenceNote}` : ''}` : '';
-     return `<tr><td>${escapeHtml(formatDate(transaction.date))}</td><td>${transaction.type === 'income' ? 'Income' : 'Expense'}</td><td>${escapeHtml(company)}</td><td>${escapeHtml(category)}</td><td>${escapeHtml(transaction.description)}</td><td class="money">${formatCurrency(transaction.amountCents)}</td><td class="money">${formatPercent(transaction.businessUsePercent)}</td><td class="money">${transaction.type === 'expense' ? formatCurrency(allocated) : '—'}</td><td>${transaction.homeOfficeRelated ? 'Yes' : '—'}</td><td>${transaction.paidDate ? `${escapeHtml(formatDate(transaction.paidDate))}${paymentNote ? `<br>${escapeHtml(paymentNote)}` : ''}` : '—'}</td><td>${escapeHtml(transaction.notes)}</td></tr>`;
+     const cells = {
+       date: escapeHtml(formatDate(transaction.date)), type: transaction.type === 'income' ? 'Income' : 'Expense',
+       company: escapeHtml(company), category: escapeHtml(category), description: escapeHtml(transaction.description),
+       amount: `<span class="money">${formatCurrency(transaction.amountCents)}</span>`,
+       businessUse: `<span class="money">${formatPercent(transaction.businessUsePercent)}</span>`,
+       allocated: `<span class="money">${transaction.type === 'expense' ? formatCurrency(allocated) : '—'}</span>`,
+       homeOffice: transaction.homeOfficeRelated ? 'Yes' : '—',
+       paid: transaction.paidDate ? `${escapeHtml(formatDate(transaction.paidDate))}${paymentNote ? `<br>${escapeHtml(paymentNote)}` : ''}` : '—',
+       notes: escapeHtml(transaction.notes)
+     };
+     return `<tr>${selectedColumns.map(([key]) => `<td>${cells[key]}</td>`).join('')}</tr>`;
   }).join('');
+  const summarySection = selection.sections.summary ? `<div class="cards"><div class="card"><div class="label">Gross income</div><div class="value">${formatCurrency(summary.incomeCents)}</div></div><div class="card"><div class="label">Total expenses</div><div class="value">${formatCurrency(summary.expenseCents)}</div></div><div class="card"><div class="label">Allocated business expenses</div><div class="value">${formatCurrency(summary.allocatedExpenseCents)}</div></div><div class="card"><div class="label">Net before tax</div><div class="value">${formatCurrency(summary.netBeforeTaxCents)}</div></div></div>` : '';
+  const homeOfficeSection = selection.sections.homeOffice ? `<h2>Home-office-related costs</h2><table><thead><tr><th>Recorded total</th><th>Allocated business amount</th><th>Entries marked home office</th></tr></thead><tbody><tr><td class="money">${formatCurrency(summary.homeOfficeCents)}</td><td class="money">${formatCurrency(summary.homeOfficeAllocatedCents)}</td><td>${transactions.filter((transaction) => transaction.homeOfficeRelated).length}</td></tr></tbody></table>` : '';
+  const totalsSection = selection.sections.categories || selection.sections.companies ? `<div class="two-col">${selection.sections.categories ? `<div><h2>Totals by category</h2><table><thead><tr><th>Type</th><th>Category</th><th>Recorded</th><th>Allocated</th></tr></thead><tbody>${categoryRows || '<tr><td colspan="4">No transactions recorded.</td></tr>'}</tbody></table></div>` : ''}${selection.sections.companies ? `<div><h2>Totals by company/source</h2><table><thead><tr><th>Company/source</th><th>Income</th><th>Expense</th></tr></thead><tbody>${companyRows || '<tr><td colspan="3">No transactions recorded.</td></tr>'}</tbody></table></div>` : ''}</div>` : '';
+  const transactionSection = selection.sections.transactions ? `<h1>Transaction Detail</h1><p class="muted">All recorded ${escapeHtml(year)} transactions. Expense allocation is calculated from the entered business-use percentage.</p><table class="ledger"><thead><tr>${selectedColumns.map(([, label]) => `<th>${label}</th>`).join('')}</tr></thead><tbody>${transactionRows || `<tr><td colspan="${Math.max(selectedColumns.length, 1)}">${selectedColumns.length ? 'No transactions recorded.' : 'Select at least one transaction field.'}</td></tr>`}</tbody></table>` : '';
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     @page { size: Letter landscape; margin: 0.45in; }
     * { box-sizing: border-box; } body { font-family: Arial, sans-serif; color: #172033; font-size: 9px; margin: 0; }
@@ -316,29 +348,36 @@ function buildReportHtml(store, year = store.taxYear, sort = {}) {
     .card { border: 1px solid #ccd7e2; border-radius: 5px; padding: 9px; background: #f5f8fb; } .card .label { color: #5e6b7c; font-size: 8px; text-transform: uppercase; } .card .value { font-weight: bold; font-size: 16px; margin-top: 3px; }
     table { width: 100%; border-collapse: collapse; } thead { display: table-header-group; } th { background: #123b63; color: white; text-align: left; font-size: 8px; } th, td { border: 1px solid #cbd5df; padding: 4px; vertical-align: top; } tr { page-break-inside: avoid; } .money { text-align: right; white-space: nowrap; }
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; } .notice { margin-top: 18px; padding: 9px; border-left: 4px solid #e59b2f; background: #fff8e8; }
-     .ledger th:nth-child(1) { width: 7%; } .ledger th:nth-child(2) { width: 6%; } .ledger th:nth-child(3) { width: 12%; } .ledger th:nth-child(4) { width: 11%; } .ledger th:nth-child(5) { width: 18%; } .ledger th:nth-child(6) { width: 8%; } .ledger th:nth-child(7) { width: 7%; } .ledger th:nth-child(8) { width: 8%; } .ledger th:nth-child(9) { width: 6%; } .ledger th:nth-child(10) { width: 8%; } .ledger th:nth-child(11) { width: 9%; }
+     .ledger .money { text-align: right; white-space: nowrap; }
   </style></head><body>
     <section class="summary-page"><h1>TaxMan ${escapeHtml(String(year))}</h1><p class="muted">Income and expenditure report · Georgia, United States · Generated ${escapeHtml(new Date().toLocaleString('en-US'))}</p>
-      <div class="cards"><div class="card"><div class="label">Gross income</div><div class="value">${formatCurrency(summary.incomeCents)}</div></div><div class="card"><div class="label">Total expenses</div><div class="value">${formatCurrency(summary.expenseCents)}</div></div><div class="card"><div class="label">Allocated business expenses</div><div class="value">${formatCurrency(summary.allocatedExpenseCents)}</div></div><div class="card"><div class="label">Net before tax</div><div class="value">${formatCurrency(summary.netBeforeTaxCents)}</div></div></div>
-      <h2>Home-office-related costs</h2><table><thead><tr><th>Recorded total</th><th>Allocated business amount</th><th>Entries marked home office</th></tr></thead><tbody><tr><td class="money">${formatCurrency(summary.homeOfficeCents)}</td><td class="money">${formatCurrency(summary.homeOfficeAllocatedCents)}</td><td>${transactions.filter((transaction) => transaction.homeOfficeRelated).length}</td></tr></tbody></table>
-      <div class="two-col"><div><h2>Totals by category</h2><table><thead><tr><th>Type</th><th>Category</th><th>Recorded</th><th>Allocated</th></tr></thead><tbody>${categoryRows || '<tr><td colspan="4">No transactions recorded.</td></tr>'}</tbody></table></div><div><h2>Totals by company/source</h2><table><thead><tr><th>Company/source</th><th>Income</th><th>Expense</th></tr></thead><tbody>${companyRows || '<tr><td colspan="3">No transactions recorded.</td></tr>'}</tbody></table></div></div>
+      ${summarySection}${homeOfficeSection}${totalsSection}
       <div class="notice"><strong>Preparers note:</strong> This report reflects the amounts and business-use percentages entered by the user. Final tax treatment, deductibility, depreciation, and federal/Georgia filing decisions must be confirmed by the tax preparer.</div>
     </section>
-    <h1>Transaction Detail</h1><p class="muted">All recorded ${escapeHtml(year)} transactions. Expense allocation is calculated from the entered business-use percentage.</p>
-       <table class="ledger"><thead><tr><th>Date</th><th>Income/Expense</th><th>Company/source</th><th>Category</th><th>Description</th><th>Amount billed</th><th>Business use</th><th>Allocated</th><th>Home office</th><th>Paid</th><th>Notes</th></tr></thead><tbody>${transactionRows || '<tr><td colspan="11">No transactions recorded.</td></tr>'}</tbody></table>
+    ${transactionSection}
   </body></html>`;
 }
 
-function serializeCsv(store, year = store.taxYear, sort = {}) {
-  const headers = ['Date', 'Income/Expense', 'Company/source', 'Category', 'Description', 'Amount billed', 'Business use %', 'Allocated business amount', 'Home office related', 'Paid date', 'Amount paid', 'Paid difference', 'Convenience fee', 'Notes'];
-  const rows = sortReportTransactions(store, transactionsForYear(store, year), sort).map((transaction) => {
-    const company = store.companies.find((item) => item.id === transaction.companyId)?.name || 'Unknown company';
-    const category = store.categories.find((item) => item.id === transaction.categoryId)?.name || 'Unknown category';
+function serializeCsv(store, year = store.taxYear, sort = {}, options) {
+  const selection = normalizeReportOptions(options);
+  const columns = [
+    ['date', 'Date', (t) => t.date], ['type', 'Income/Expense', (t) => t.type === 'income' ? 'Income' : 'Expense'],
+    ['company', 'Company/source', (t, names) => names.companies.get(t.companyId) || 'Unknown company'],
+    ['category', 'Category', (t, names) => names.categories.get(t.categoryId) || 'Unknown category'], ['description', 'Description', (t) => t.description],
+    ['amount', 'Amount billed', (t) => (t.amountCents / 100).toFixed(2)], ['businessUse', 'Business use %', (t) => t.businessUsePercent ?? ''],
+    ['allocated', 'Allocated business amount', (t) => (businessAmountCents(t) / 100).toFixed(2)], ['homeOffice', 'Home office related', (t) => t.homeOfficeRelated ? 'Yes' : 'No'],
+    ['paid', 'Paid date', (t) => t.paidDate], ['paid', 'Amount paid', (_t, _names, paid) => paid.paidAmount === null ? '' : (paid.paidAmount / 100).toFixed(2)],
+    ['paid', 'Paid difference', (_t, _names, paid) => paid.paidDifference === null ? '' : (paid.paidDifference / 100).toFixed(2)],
+    ['paid', 'Convenience fee', (t) => t.convenienceFee ? 'Yes' : 'No'], ['notes', 'Notes', (t, _names, paid) => t.paidDifferenceNote ? `${t.paidDifferenceNote}${t.notes ? ` · ${t.notes}` : ''}` : t.notes]
+  ].filter(([key]) => selection.columns[key]);
+  const names = { companies: new Map(store.companies.map((item) => [item.id, item.name])), categories: new Map(store.categories.map((item) => [item.id, item.name])) };
+  const rows = selection.sections.transactions ? sortReportTransactions(store, transactionsForYear(store, year), sort).map((transaction) => {
     const paidAmount = Number.isInteger(transaction.paidAmountCents) ? transaction.paidAmountCents : null;
     const paidDifference = paidAmount === null ? null : paidAmount - transaction.amountCents;
-    return [transaction.date, transaction.type === 'income' ? 'Income' : 'Expense', company, category, transaction.description, (transaction.amountCents / 100).toFixed(2), transaction.businessUsePercent ?? '', (businessAmountCents(transaction) / 100).toFixed(2), transaction.homeOfficeRelated ? 'Yes' : 'No', transaction.paidDate, paidAmount === null ? '' : (paidAmount / 100).toFixed(2), paidDifference === null ? '' : (paidDifference / 100).toFixed(2), transaction.convenienceFee ? 'Yes' : 'No', transaction.paidDifferenceNote ? `${transaction.paidDifferenceNote}${transaction.notes ? ` · ${transaction.notes}` : ''}` : transaction.notes];
-  });
-  return [headers, ...rows].map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n') + '\r\n';
+    const paid = { paidAmount, paidDifference };
+    return columns.map(([, , value]) => value(transaction, names, paid));
+  }) : [];
+  return [columns.map(([, label]) => label), ...rows].map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n') + '\r\n';
 }
 
-module.exports = { TAX_YEAR, DEFAULT_COMPANIES, DEFAULT_CATEGORIES, DEFAULT_WORK_TIME, DEFAULT_DESCRIPTIONS, createEmptyStore, normalizeStore, normalizeWorkTime, calculateTimeBusinessUsePercent, validateStore, isValidIsoDate, isValidTaxDate, normalizePercent, businessAmountCents, calculateSummary, formatCurrency, formatPercent, escapeHtml, buildReportHtml, serializeCsv, isReceiptImageData };
+module.exports = { TAX_YEAR, DEFAULT_COMPANIES, DEFAULT_CATEGORIES, DEFAULT_WORK_TIME, DEFAULT_DESCRIPTIONS, createEmptyStore, normalizeStore, normalizeWorkTime, calculateTimeBusinessUsePercent, validateStore, isValidIsoDate, isValidTaxDate, normalizePercent, businessAmountCents, calculateSummary, formatCurrency, formatPercent, escapeHtml, buildReportHtml, serializeCsv, normalizeReportOptions, isReceiptImageData };

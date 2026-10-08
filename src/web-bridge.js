@@ -95,12 +95,16 @@ if (!window.taxLedger) {
     if (!response.ok || !payload.ok) throw new Error(payload.error || 'TaxMan could not prepare the next photo.');
     return payload;
   }
-  function csv(store, year) {
+  function csv(store, year, options = {}) {
     const companies = new Map(store.companies.map((item) => [item.id, item.name]));
     const categories = new Map(store.categories.map((item) => [item.id, item.name]));
     const headers = ['Date', 'Income/Expense', 'Company/source', 'Category', 'Description', 'Amount billed', 'Business use %', 'Allocated business amount', 'Home office related', 'Paid date', 'Amount paid', 'Paid difference', 'Convenience fee', 'Notes'];
     const rows = store.transactions.filter((item) => item.taxYear === Number(year)).map((item) => { const paidAmount = Number.isInteger(item.paidAmountCents) ? item.paidAmountCents : null; const paidDifference = paidAmount === null ? null : paidAmount - (item.amountCents || 0); return [item.date, item.type === 'income' ? 'Income' : 'Expense', companies.get(item.companyId) || 'Unknown company', categories.get(item.categoryId) || 'Unknown category', item.description, ((item.amountCents || 0) / 100).toFixed(2), item.businessUsePercent ?? '', (((item.amountCents || 0) * Number(item.businessUsePercent ?? 0) / 100) / 100).toFixed(2), item.homeOfficeRelated ? 'Yes' : 'No', item.paidDate || '', paidAmount === null ? '' : (paidAmount / 100).toFixed(2), paidDifference === null ? '' : (paidDifference / 100).toFixed(2), item.convenienceFee ? 'Yes' : 'No', item.paidDifferenceNote ? `${item.paidDifferenceNote}${item.notes ? ` · ${item.notes}` : ''}` : item.notes]; });
-    return [headers, ...rows].map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n') + '\r\n';
+    const columns = [['date', 0], ['type', 1], ['company', 2], ['category', 3], ['description', 4], ['amount', 5], ['businessUse', 6], ['allocated', 7], ['homeOffice', 8], ['paid', 9], ['paid', 10], ['paid', 11], ['paid', 12], ['notes', 13]];
+    const included = columns.map(([key], index) => typeof options.columns?.[key] === 'boolean' ? options.columns[key] : true);
+    const selectedHeaders = headers.filter((_header, index) => included[index]);
+    const selectedRows = options.sections?.transactions === false ? [] : rows.map((row) => row.filter((_value, index) => included[index]));
+    return [selectedHeaders, ...selectedRows].map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n') + '\r\n';
   }
   function chooseJsonFile() {
     return new Promise((resolve, reject) => {
@@ -120,11 +124,11 @@ if (!window.taxLedger) {
     chooseWorkspace: async () => ({ canceled: true }),
     importJson: chooseJsonFile,
     exportJson: async (store) => { download('taxman-mobile-backup.json', JSON.stringify(normalizeStore(store), null, 2), 'application/json'); return { canceled: false, path: 'taxman-mobile-backup.json' }; },
-    exportCsv: async (store, year) => { download(`taxman-${year || 'transactions'}.csv`, csv(normalizeStore(store), year), 'text/csv'); return { canceled: false, path: `taxman-${year || 'transactions'}.csv` }; },
+    exportCsv: async (store, year, _sort, options) => { download(`taxman-${year || 'transactions'}.csv`, csv(normalizeStore(store), year, options), 'text/csv'); return { canceled: false, path: `taxman-${year || 'transactions'}.csv` }; },
     exportPdf: async () => { window.print(); return { canceled: true }; },
     openFolder: async () => {},
     checkForUpdates: async () => { window.open('https://taxman.speedy-star-8288.chatgpt.site/download.html', '_blank'); },
-  getVersion: async () => '0.4.20',
+  getVersion: async () => '0.4.21',
     startPhoneCapture: async () => ({ direct: true }),
     stopPhoneCapture: async () => {},
     getPairedComputer: async () => loadPairedComputer(),

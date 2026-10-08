@@ -513,27 +513,27 @@ function registerIpc() {
     await writeWorkspaceConfig(configuredWorkspacePath);
     return { canceled: false, path: result.filePath };
   });
-  ipcMain.handle('store:export-csv', async (_event, store, year, sort) => {
+  ipcMain.handle('store:export-csv', async (_event, store, year, sort, options) => {
     const result = await saveDialog(`taxman-${year || 'transactions'}.csv`, [{ name: 'CSV spreadsheet', extensions: ['csv'] }]);
     if (result.canceled || !result.filePath) return { canceled: true };
-    await fs.writeFile(result.filePath, serializeCsv(normalizeStore(store), year, sort), 'utf8');
+    await fs.writeFile(result.filePath, serializeCsv(normalizeStore(store), year, sort, options), 'utf8');
     return { canceled: false, path: result.filePath };
   });
-  ipcMain.handle('report:export-pdf', async (_event, store, year, sort) => {
+  ipcMain.handle('report:export-pdf', async (_event, store, year, sort, options) => {
     const result = await saveDialog(`taxman-${year || 'report'}.pdf`, [{ name: 'PDF report', extensions: ['pdf'] }]);
     if (result.canceled || !result.filePath) return { canceled: true };
     const reportWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
     try {
-      await reportWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildReportHtml(normalizeStore(store), year, sort))}`);
+      await reportWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildReportHtml(normalizeStore(store), year, sort, options))}`);
       const pdf = await reportWindow.webContents.printToPDF({ landscape: true, pageSize: 'Letter', printBackground: true, margins: { marginType: 'default' } });
       await fs.writeFile(result.filePath, pdf);
     } finally { if (!reportWindow.isDestroyed()) reportWindow.destroy(); }
     return { canceled: false, path: result.filePath };
   });
-  ipcMain.handle('report:print', async (_event, store, year, sort) => {
+  ipcMain.handle('report:print', async (_event, store, year, sort, options) => {
     const reportWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
     try {
-      await reportWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildReportHtml(normalizeStore(store), year, sort))}`);
+      await reportWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildReportHtml(normalizeStore(store), year, sort, options))}`);
       return await new Promise((resolve) => reportWindow.webContents.print({ silent: false, printBackground: true }, (success, failureReason) => resolve({ canceled: !success, error: failureReason || '' })));
     } finally { if (!reportWindow.isDestroyed()) reportWindow.destroy(); }
   });

@@ -3,7 +3,10 @@
 const TAX_YEAR = 2025;
 const NEW_COMPANY = '__create__';
 const DEFAULT_STORAGE_SETTINGS = { closeBehavior: 'ask', backupRetention: 7, backupReminderDays: 30, lastManualBackupAt: '' };
-const state = { store: null, workspace: { configured: false, available: false, path: '', storage: {}, storageSettings: { ...DEFAULT_STORAGE_SETTINGS } }, view: 'dashboard', selectedYear: 2025, transactionDraft: null, reportPreview: false, reportSortKey: 'date', reportSortDirection: 'asc', phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, companionLastSent: false, companionAppendNext: false, pendingPhonePhoto: null, paymentModal: null, workUseModal: false, receiptEditor: null, companionImageEditor: null, cropDrag: null, descriptionModal: false, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, receiptZoom: 1, appVersion: '0.4.20', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
+const REPORT_COLUMNS = [['date', 'Date'], ['type', 'Type'], ['company', 'Company/source'], ['category', 'Category'], ['description', 'Description'], ['amount', 'Amount'], ['businessUse', 'Business use'], ['allocated', 'Allocated'], ['homeOffice', 'Home office'], ['paid', 'Paid'], ['notes', 'Notes']];
+const REPORT_SECTIONS = [['summary', 'Summary cards'], ['homeOffice', 'Home-office totals'], ['categories', 'Totals by category'], ['companies', 'Totals by company/source'], ['transactions', 'Transaction detail']];
+const allReportOptions = () => ({ sections: Object.fromEntries(REPORT_SECTIONS.map(([key]) => [key, true])), columns: Object.fromEntries(REPORT_COLUMNS.map(([key]) => [key, true])) });
+const state = { store: null, workspace: { configured: false, available: false, path: '', storage: {}, storageSettings: { ...DEFAULT_STORAGE_SETTINGS } }, view: 'dashboard', selectedYear: 2025, transactionDraft: null, reportPreview: false, reportSections: allReportOptions().sections, reportColumns: allReportOptions().columns, reportSortKey: 'date', reportSortDirection: 'asc', phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, companionLastSent: false, companionAppendNext: false, pendingPhonePhoto: null, paymentModal: null, workUseModal: false, receiptEditor: null, companionImageEditor: null, cropDrag: null, descriptionModal: false, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, receiptZoom: 1, appVersion: '0.4.21', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
 let companionPollTimer;
 let pairingPollTimer;
 let qrScannerStream;
@@ -39,6 +42,12 @@ function bindEvents() {
     if (formId === 'storage-settings-form') { event.preventDefault(); await saveStorageSettings(new FormData(event.target)); }
   });
   document.addEventListener('change', (event) => {
+    if (event.target.matches('[data-report-selection]')) {
+      const target = event.target.dataset.reportGroup === 'section' ? state.reportSections : state.reportColumns;
+      target[event.target.dataset.reportKey] = event.target.checked;
+      render();
+      return;
+    }
     if (event.target.id === 'year-select') { state.selectedYear = event.target.value === 'all' ? 'all' : Number(event.target.value); render(); }
     if (event.target.id === 'transaction-type') {
       captureTransactionDraftFromForm();
@@ -64,11 +73,7 @@ function bindEvents() {
         render();
       } else {
         const company = findCompany(selectedCompanyId);
-        if (company?.alwaysHomeOfficeRelated && state.transactionDraft?.type === 'expense') {
-          state.transactionDraft.homeOfficeRelated = true;
-          state.transactionDraft.businessUsePercent = calculateTimeBusinessUsePercent(state.store.workTime);
-          render();
-        }
+        if (applyCompanyExpenseDefaults(company, state.transactionDraft)) render();
       }
     }
     if (event.target.id === 'existing-company') {
@@ -77,7 +82,8 @@ function bindEvents() {
     }
     if (event.target.id === 'home-office-related' && event.target.checked) {
       const businessUse = document.getElementById('business-use');
-      if (businessUse) businessUse.value = String(calculateTimeBusinessUsePercent(state.store.workTime));
+      const selectedCompany = findCompany(document.getElementById('transaction-company')?.value);
+      if (businessUse) businessUse.value = String(selectedCompany?.always100PercentBusinessUse ? 100 : calculateTimeBusinessUsePercent(state.store.workTime));
     }
     if (event.target.id === 'receipt-photo' && event.target.files?.[0]) handleReceiptFile(event.target.files[0]);
     if (event.target.id === 'companion-photo' && event.target.files?.[0]) handleCompanionPhoto(event.target.files[0]);
@@ -462,9 +468,26 @@ function reportSortButton(key, label) {
   return `<button type="button" class="report-sort-button" data-action="report-sort" data-key="${key}" aria-label="Sort by ${label}" aria-pressed="${active}">${label}${arrow}</button>`;
 }
 
+function reportSelectionCheckbox(group, key, label, checked) {
+  return `<label class="report-selection-option"><input type="checkbox" data-report-selection data-report-group="${group}" data-report-key="${key}"${checked ? ' checked' : ''}><span>${label}</span></label>`;
+}
+
+function selectedReportOptions() {
+  return { sections: { ...state.reportSections }, columns: { ...state.reportColumns } };
+}
+
+function applyCompanyExpenseDefaults(company, draft) {
+  if (!company || !draft || draft.type !== 'expense') return false;
+  if (company.alwaysHomeOfficeRelated) draft.homeOfficeRelated = true;
+  if (company.always100PercentBusinessUse) draft.businessUsePercent = 100;
+  else if (company.alwaysHomeOfficeRelated) draft.businessUsePercent = calculateTimeBusinessUsePercent(state.store.workTime);
+  return Boolean(company.alwaysHomeOfficeRelated || company.always100PercentBusinessUse);
+}
+
 function renderReportPreviewModal() {
   const transactions = reportTransactions();
   const summary = calculateSummary(state.store, state.selectedYear);
+  const selectedColumns = REPORT_COLUMNS.filter(([key]) => state.reportColumns[key]);
   const paidCell = (transaction) => {
     if (!transaction.paidDate) return '—';
     const paidAmount = Number.isInteger(transaction.paidAmountCents) ? transaction.paidAmountCents : null;
@@ -487,10 +510,29 @@ function renderReportPreviewModal() {
     companyRow[transaction.type] += transaction.amountCents || 0;
     companies.set(company, companyRow);
   }
-  const rows = transactions.map((transaction) => `<tr><td>${escapeHtml(formatDateDisplay(transaction.date))}</td><td>${transaction.type === 'income' ? 'Income' : 'Expense'}</td><td>${escapeHtml(findCompany(transaction.companyId)?.name || 'Unknown company')}</td><td>${escapeHtml(findCategory(transaction.categoryId)?.name || 'Unknown category')}</td><td>${escapeHtml(transaction.description)}</td><td class="money">${money(transaction.amountCents)}</td><td class="money">${transaction.type === 'expense' ? `${formatPercent(transaction.businessUsePercent)}` : '—'}</td><td class="money">${transaction.type === 'expense' ? money(businessAmount(transaction)) : '—'}</td><td>${transaction.homeOfficeRelated ? 'Yes' : '—'}</td><td>${paidCell(transaction)}</td><td>${escapeHtml(transaction.notes || '—')}</td></tr>`).join('');
+  const rows = transactions.map((transaction) => {
+    const cells = {
+      date: escapeHtml(formatDateDisplay(transaction.date)), type: transaction.type === 'income' ? 'Income' : 'Expense',
+      company: escapeHtml(findCompany(transaction.companyId)?.name || 'Unknown company'),
+      category: escapeHtml(findCategory(transaction.categoryId)?.name || 'Unknown category'),
+      description: escapeHtml(transaction.description), amount: `<span class="money">${money(transaction.amountCents)}</span>`,
+      businessUse: `<span class="money">${transaction.type === 'expense' ? formatPercent(transaction.businessUsePercent) : '—'}</span>`,
+      allocated: `<span class="money">${transaction.type === 'expense' ? money(businessAmount(transaction)) : '—'}</span>`,
+      homeOffice: transaction.homeOfficeRelated ? 'Yes' : '—', paid: paidCell(transaction), notes: escapeHtml(transaction.notes || '—')
+    };
+    return `<tr>${selectedColumns.map(([key]) => `<td>${cells[key]}</td>`).join('')}</tr>`;
+  }).join('');
   const categoryRows = [...categories.values()].sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name)).map((row) => `<tr><td>${row.type}</td><td>${escapeHtml(row.name)}</td><td class="money">${money(row.amount)}</td><td class="money">${row.type === 'Expense' ? money(row.allocated) : '—'}</td></tr>`).join('');
   const companyRows = [...companies.values()].sort((a, b) => a.name.localeCompare(b.name)).map((row) => `<tr><td>${escapeHtml(row.name)}</td><td class="money">${money(row.income)}</td><td class="money">${money(row.expense)}</td></tr>`).join('');
-  return `<div class="modal-backdrop report-preview-backdrop"><section class="modal report-preview-modal" role="dialog" aria-modal="true" aria-labelledby="report-preview-title"><div class="modal-header"><div><span class="eyebrow">Printable report</span><h2 id="report-preview-title">TaxMan ${escapeHtml(String(state.selectedYear))} report preview</h2></div><button class="close-button" data-action="close-report-preview" aria-label="Close">×</button></div><div class="modal-body"><div class="cards report-preview-cards">${metric('Gross income', money(summary.incomeCents), '', 'accent')}${metric('All expenses', money(summary.expenseCents), '', 'orange')}${metric('Allocated expenses', money(summary.allocatedExpenseCents), '', 'green')}${metric('Net before tax', money(summary.netBeforeTaxCents), '', 'purple')}</div><section class="report-preview-home-office"><h3>Home-office-related costs</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Recorded total</th><th>Allocated business amount</th><th>Entries marked home office</th></tr></thead><tbody><tr><td class="money">${money(summary.homeOfficeCents)}</td><td class="money">${money(summary.homeOfficeAllocatedCents)}</td><td>${summary.homeOfficeCount}</td></tr></tbody></table></div></section><div class="report-preview-totals"><section><h3>Totals by category</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Type</th><th>Category</th><th>Recorded</th><th>Allocated</th></tr></thead><tbody>${categoryRows || '<tr><td colspan="4">No transactions recorded.</td></tr>'}</tbody></table></div></section><section><h3>Totals by company/source</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Company/source</th><th>Income</th><th>Expense</th></tr></thead><tbody>${companyRows || '<tr><td colspan="3">No transactions recorded.</td></tr>'}</tbody></table></div></section></div><div class="report-preview-ledger-heading"><div><h3>Transaction detail</h3><p class="muted">${transactions.length} transaction${transactions.length === 1 ? '' : 's'} · Select any column heading to sort.</p></div></div><div class="table-wrap report-preview-table-wrap"><table class="data-table report-preview-table"><thead><tr><th>${reportSortButton('date', 'Date')}</th><th>${reportSortButton('type', 'Type')}</th><th>${reportSortButton('company', 'Company/source')}</th><th>${reportSortButton('category', 'Category')}</th><th>${reportSortButton('description', 'Description')}</th><th>${reportSortButton('amount', 'Amount')}</th><th>${reportSortButton('businessUse', 'Business use')}</th><th>${reportSortButton('allocated', 'Allocated')}</th><th>${reportSortButton('homeOffice', 'Home office')}</th><th>${reportSortButton('paid', 'Paid')}</th><th>${reportSortButton('notes', 'Notes')}</th></tr></thead><tbody>${rows || '<tr><td colspan="11">No transactions recorded.</td></tr>'}</tbody></table></div><p class="report-note"><strong>Preparer’s note:</strong> This report reflects recorded amounts and entered business-use percentages. Confirm final tax treatment and filing decisions with your tax preparer.</p><div class="report-preview-actions"><button type="button" class="secondary-button" data-action="print-report">Print…</button><button type="button" class="secondary-button" data-action="export-csv">Export CSV</button><button type="button" class="primary-button" data-action="export-pdf">Export PDF…</button></div><p class="muted report-print-hint">Print opens your printer selection. Choose an installed printer or a PDF printer; Export PDF saves a PDF file directly.</p></div></section></div>`;
+  const sectionChoices = REPORT_SECTIONS.map(([key, label]) => reportSelectionCheckbox('section', key, label, state.reportSections[key])).join('');
+  const columnChoices = REPORT_COLUMNS.map(([key, label]) => reportSelectionCheckbox('column', key, label, state.reportColumns[key])).join('');
+  const summarySection = state.reportSections.summary ? `<div class="cards report-preview-cards">${metric('Gross income', money(summary.incomeCents), '', 'accent')}${metric('All expenses', money(summary.expenseCents), '', 'orange')}${metric('Allocated expenses', money(summary.allocatedExpenseCents), '', 'green')}${metric('Net before tax', money(summary.netBeforeTaxCents), '', 'purple')}</div>` : '';
+  const homeOfficeSection = state.reportSections.homeOffice ? `<section class="report-preview-home-office"><h3>Home-office-related costs</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Recorded total</th><th>Allocated business amount</th><th>Entries marked home office</th></tr></thead><tbody><tr><td class="money">${money(summary.homeOfficeCents)}</td><td class="money">${money(summary.homeOfficeAllocatedCents)}</td><td>${summary.homeOfficeCount}</td></tr></tbody></table></div></section>` : '';
+  const categorySection = state.reportSections.categories ? `<section><h3>Totals by category</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Type</th><th>Category</th><th>Recorded</th><th>Allocated</th></tr></thead><tbody>${categoryRows || '<tr><td colspan="4">No transactions recorded.</td></tr>'}</tbody></table></div></section>` : '';
+  const companySection = state.reportSections.companies ? `<section><h3>Totals by company/source</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Company/source</th><th>Income</th><th>Expense</th></tr></thead><tbody>${companyRows || '<tr><td colspan="3">No transactions recorded.</td></tr>'}</tbody></table></div></section>` : '';
+  const totalsSection = categorySection || companySection ? `<div class="report-preview-totals">${categorySection}${companySection}</div>` : '';
+  const detailSection = state.reportSections.transactions ? `<div class="report-preview-ledger-heading"><div><h3>Transaction detail</h3><p class="muted">${transactions.length} transaction${transactions.length === 1 ? '' : 's'} · Select any column heading to sort.</p></div></div><div class="table-wrap report-preview-table-wrap"><table class="data-table report-preview-table"><thead><tr>${selectedColumns.map(([key, label]) => `<th>${reportSortButton(key, label)}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${Math.max(selectedColumns.length, 1)}">${selectedColumns.length ? 'No transactions recorded.' : 'Select at least one transaction field.'}</td></tr>`}</tbody></table></div>` : '';
+  return `<div class="modal-backdrop report-preview-backdrop"><section class="modal report-preview-modal" role="dialog" aria-modal="true" aria-labelledby="report-preview-title"><div class="modal-header"><div><span class="eyebrow">Printable report</span><h2 id="report-preview-title">TaxMan ${escapeHtml(String(state.selectedYear))} report preview</h2></div><button class="close-button" data-action="close-report-preview" aria-label="Close">×</button></div><div class="modal-body"><details class="report-selection" open><summary>Choose what to include</summary><div class="report-selection-groups"><fieldset><legend>Report sections</legend><div class="report-selection-options">${sectionChoices}</div></fieldset><fieldset><legend>Transaction fields</legend><div class="report-selection-options report-column-options">${columnChoices}</div></fieldset></div></details>${summarySection}${homeOfficeSection}${totalsSection}${detailSection}<p class="report-note"><strong>Preparer’s note:</strong> This report reflects recorded amounts and entered business-use percentages. Confirm final tax treatment and filing decisions with your tax preparer.</p><div class="report-preview-actions"><button type="button" class="secondary-button" data-action="print-report">Print…</button><button type="button" class="secondary-button" data-action="export-csv">Export CSV</button><button type="button" class="primary-button" data-action="export-pdf">Export PDF…</button></div><p class="muted report-print-hint">Print opens your printer selection. Choose an installed printer or a PDF printer; Export PDF saves a PDF file directly.</p></div></section></div>`;
 }
 
 function renderReports() {
@@ -528,7 +570,7 @@ function renderCompanyModal() {
   const title = state.companyModal.editId ? 'Edit company or source' : 'Create new company or source';
   const companyName = company.name || state.companyModal.prefillName || '';
   const existingSelector = !state.companyModal.editId ? `<div class="field wide"><label for="existing-company">Use an existing company/source</label><select id="existing-company" name="existingId"><option value="">Create a new company/source…</option>${[...state.store.companies].sort((a, b) => a.name.localeCompare(b.name)).map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === state.companyModal.selectedExistingId ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select><small>Choose a saved record to review or update it, or leave this set to create a new one.</small></div>` : '';
-  return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-header"><h2 id="modal-title">${title}</h2><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><form id="company-form"><input type="hidden" name="id" value="${escapeAttr(state.companyModal.editId || '')}"><div class="form-grid">${existingSelector}<div class="field wide"><label class="required" for="company-name">Name</label><input id="company-name" name="name" required maxlength="120" placeholder="e.g. Georgia Power" value="${escapeAttr(companyName)}"></div><div class="field"><label for="company-classification">Classification</label><select id="company-classification" name="classification">${['Utility','Income source','Vendor','Client','Employer','Insurance','Bank','Other'].map((value) => `<option ${value === (company.classification || 'Other') ? 'selected' : ''}>${value}</option>`).join('')}</select></div><div class="field"><label for="company-phone">Phone</label><input id="company-phone" name="phone" maxlength="40" value="${escapeAttr(company.phone || '')}"></div><div class="field"><label for="company-email">Email</label><input id="company-email" name="email" type="email" maxlength="120" value="${escapeAttr(company.email || '')}"></div><div class="field"><label for="company-website">Website</label><input id="company-website" name="website" maxlength="160" value="${escapeAttr(company.website || '')}"></div><div class="field wide"><label for="company-mailing-address1">Mailing address line 1</label><input id="company-mailing-address1" name="mailingAddress1" maxlength="160" placeholder="P.O. Box 250 or street address" value="${escapeAttr(company.mailingAddress1 || '')}"></div><div class="field wide"><label for="company-mailing-address2">Mailing address line 2</label><input id="company-mailing-address2" name="mailingAddress2" maxlength="160" placeholder="Suite, unit, or attention line (optional)" value="${escapeAttr(company.mailingAddress2 || '')}"></div><div class="field"><label for="company-mailing-city">City</label><input id="company-mailing-city" name="mailingCity" maxlength="80" value="${escapeAttr(company.mailingCity || '')}"></div><div class="field"><label for="company-mailing-state">State</label><input id="company-mailing-state" name="mailingState" maxlength="40" value="${escapeAttr(company.mailingState || '')}"></div><div class="field"><label for="company-mailing-postal">ZIP code</label><input id="company-mailing-postal" name="mailingPostalCode" maxlength="20" inputmode="numeric" value="${escapeAttr(company.mailingPostalCode || '')}"></div><div class="field wide"><label for="company-notes">Notes</label><textarea id="company-notes" name="notes" maxlength="500">${escapeHtml(company.notes || '')}</textarea></div><div class="check-field wide"><input id="company-always-home-office" name="alwaysHomeOfficeRelated" type="checkbox" ${company.alwaysHomeOfficeRelated ? 'checked' : ''}><label for="company-always-home-office">Always mark new expenses for this company as home-office-related</label></div></div><div class="modal-actions"><button type="button" class="secondary-button" data-action="close-modal">Cancel</button><button type="submit" class="primary-button">Save company</button></div></form></div></section></div>`;
+  return `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-header"><h2 id="modal-title">${title}</h2><button class="close-button" data-action="close-modal" aria-label="Close">×</button></div><div class="modal-body"><form id="company-form"><input type="hidden" name="id" value="${escapeAttr(state.companyModal.editId || '')}"><div class="form-grid">${existingSelector}<div class="field wide"><label class="required" for="company-name">Name</label><input id="company-name" name="name" required maxlength="120" placeholder="e.g. Georgia Power" value="${escapeAttr(companyName)}"></div><div class="field"><label for="company-classification">Classification</label><select id="company-classification" name="classification">${['Utility','Income source','Vendor','Client','Employer','Insurance','Bank','Software','Other'].map((value) => `<option ${value === (company.classification || 'Other') ? 'selected' : ''}>${value}</option>`).join('')}</select></div><div class="field"><label for="company-phone">Phone</label><input id="company-phone" name="phone" maxlength="40" value="${escapeAttr(company.phone || '')}"></div><div class="field"><label for="company-email">Email</label><input id="company-email" name="email" type="email" maxlength="120" value="${escapeAttr(company.email || '')}"></div><div class="field"><label for="company-website">Website</label><input id="company-website" name="website" maxlength="160" value="${escapeAttr(company.website || '')}"></div><div class="field wide"><label for="company-mailing-address1">Mailing address line 1</label><input id="company-mailing-address1" name="mailingAddress1" maxlength="160" placeholder="P.O. Box 250 or street address" value="${escapeAttr(company.mailingAddress1 || '')}"></div><div class="field wide"><label for="company-mailing-address2">Mailing address line 2</label><input id="company-mailing-address2" name="mailingAddress2" maxlength="160" placeholder="Suite, unit, or attention line (optional)" value="${escapeAttr(company.mailingAddress2 || '')}"></div><div class="field"><label for="company-mailing-city">City</label><input id="company-mailing-city" name="mailingCity" maxlength="80" value="${escapeAttr(company.mailingCity || '')}"></div><div class="field"><label for="company-mailing-state">State</label><input id="company-mailing-state" name="mailingState" maxlength="40" value="${escapeAttr(company.mailingState || '')}"></div><div class="field"><label for="company-mailing-postal">ZIP code</label><input id="company-mailing-postal" name="mailingPostalCode" maxlength="20" inputmode="numeric" value="${escapeAttr(company.mailingPostalCode || '')}"></div><div class="field wide"><label for="company-notes">Notes</label><textarea id="company-notes" name="notes" maxlength="500">${escapeHtml(company.notes || '')}</textarea></div><div class="check-field wide"><input id="company-always-home-office" name="alwaysHomeOfficeRelated" type="checkbox" ${company.alwaysHomeOfficeRelated ? 'checked' : ''}><label for="company-always-home-office">Always mark new expenses for this company as home-office-related</label></div><div class="check-field wide"><input id="company-always-100-business" name="always100PercentBusinessUse" type="checkbox" ${company.always100PercentBusinessUse ? 'checked' : ''}><label for="company-always-100-business">Always count expenses from this company as 100% business use</label></div></div><div class="modal-actions"><button type="button" class="secondary-button" data-action="close-modal">Cancel</button><button type="submit" class="primary-button">Save company</button></div></form></div></section></div>`;
 }
 
 function renderPhonePairingModal() {
@@ -894,10 +936,7 @@ async function readBillPhoto() {
     Object.assign(state.transactionDraft, updates);
     const recognizedCompany = suggestions.companyId ? suggestions.vendor : '';
     const company = recognizedCompany ? findCompany(suggestions.companyId) : null;
-    if (company?.alwaysHomeOfficeRelated && state.transactionDraft.type === 'expense') {
-      state.transactionDraft.homeOfficeRelated = true;
-      state.transactionDraft.businessUsePercent = calculateTimeBusinessUsePercent(state.store.workTime);
-    }
+    applyCompanyExpenseDefaults(company, state.transactionDraft);
     const addressNote = suggestions.companyAddress && recognizedCompany ? ' A mailing address was found in the reference text; save it manually in Companies & sources if needed.' : '';
     state.ocr = { busy: false, message: recognizedCompany ? `Matched saved company ${recognizedCompany}. Date, amount, category, and description were left unchanged.${addressNote}` : 'Reference text is ready. Date, amount, category, and description were left unchanged; enter them after checking the image.', vendor: recognizedCompany, text: suggestions.text || '' };
   } catch (error) {
@@ -1042,11 +1081,11 @@ async function saveCompany(form) {
   const duplicate = state.store.companies.find((company) => company.name.toLowerCase() === name.toLowerCase() && company.id !== selectedId);
   if (duplicate) { toast('That company or source already exists.', true); return; }
   const existing = state.store.companies.find((company) => company.id === selectedId);
-  const company = { id: existing?.id || `company-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, classification: String(form.get('classification') || 'Other'), phone: String(form.get('phone') || '').trim(), email: String(form.get('email') || '').trim(), website: String(form.get('website') || '').trim(), mailingAddress1: String(form.get('mailingAddress1') || '').trim(), mailingAddress2: String(form.get('mailingAddress2') || '').trim(), mailingCity: String(form.get('mailingCity') || '').trim(), mailingState: String(form.get('mailingState') || '').trim(), mailingPostalCode: String(form.get('mailingPostalCode') || '').trim(), notes: String(form.get('notes') || '').trim(), alwaysHomeOfficeRelated: form.get('alwaysHomeOfficeRelated') === 'on' };
+  const company = { id: existing?.id || `company-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, classification: String(form.get('classification') || 'Other'), phone: String(form.get('phone') || '').trim(), email: String(form.get('email') || '').trim(), website: String(form.get('website') || '').trim(), mailingAddress1: String(form.get('mailingAddress1') || '').trim(), mailingAddress2: String(form.get('mailingAddress2') || '').trim(), mailingCity: String(form.get('mailingCity') || '').trim(), mailingState: String(form.get('mailingState') || '').trim(), mailingPostalCode: String(form.get('mailingPostalCode') || '').trim(), notes: String(form.get('notes') || '').trim(), alwaysHomeOfficeRelated: form.get('alwaysHomeOfficeRelated') === 'on', always100PercentBusinessUse: form.get('always100PercentBusinessUse') === 'on' };
   if (existing) state.store.companies = state.store.companies.map((item) => item.id === existing.id ? company : item); else state.store.companies.push(company);
   try { await persist(); } catch (error) { toast(error.message || 'Company could not be saved.', true); return; }
   const returnToTransaction = state.companyModal.returnToTransaction;
-  if (returnToTransaction) { state.transactionDraft.companyId = company.id; if (company.alwaysHomeOfficeRelated && state.transactionDraft.type === 'expense') { state.transactionDraft.homeOfficeRelated = true; state.transactionDraft.businessUsePercent = calculateTimeBusinessUsePercent(state.store.workTime); } state.view = 'transactions'; }
+  if (returnToTransaction) { state.transactionDraft.companyId = company.id; applyCompanyExpenseDefaults(company, state.transactionDraft); state.view = 'transactions'; }
   else state.view = 'companies';
   state.companyModal = null; toast(existing ? 'Company updated.' : 'Company created.'); render();
 }
@@ -1106,7 +1145,8 @@ async function saveLedger() {
 async function exportFile(kind) {
   try {
     const sort = { key: state.reportSortKey, direction: state.reportSortDirection };
-    const result = kind === 'pdf' ? await window.taxLedger.exportPdf(state.store, state.selectedYear, sort) : kind === 'csv' ? await window.taxLedger.exportCsv(state.store, state.selectedYear, sort) : await window.taxLedger.exportJson(state.store);
+    const options = state.reportPreview ? selectedReportOptions() : undefined;
+    const result = kind === 'pdf' ? await window.taxLedger.exportPdf(state.store, state.selectedYear, sort, options) : kind === 'csv' ? await window.taxLedger.exportCsv(state.store, state.selectedYear, sort, options) : await window.taxLedger.exportJson(state.store);
     if (!result.canceled) {
       if (kind === 'pdf') state.lastPdfPath = result.path;
       else if (kind === 'csv') state.lastCsvPath = result.path;
@@ -1119,7 +1159,7 @@ async function exportFile(kind) {
 
 async function printReport() {
   try {
-    const result = await window.taxLedger.printReport(state.store, state.selectedYear, { key: state.reportSortKey, direction: state.reportSortDirection });
+    const result = await window.taxLedger.printReport(state.store, state.selectedYear, { key: state.reportSortKey, direction: state.reportSortDirection }, selectedReportOptions());
     if (result?.error) toast(`The report could not be printed: ${result.error}`, true);
     else if (!result?.canceled) toast('Report sent to the selected printer.');
   } catch (error) { toast(error.message || 'The report could not be printed.', true); }
@@ -1169,7 +1209,7 @@ function transactionSearchValues(transaction) {
 }
 
 function filteredTransactions() { const search = state.search.trim().toLowerCase(); return [...transactionsForYear(state.store, state.selectedYear)].filter((transaction) => { const matchesSearch = !search || transactionSearchValues(transaction).some((value) => value.includes(search)); return (state.typeFilter === 'all' || transaction.type === state.typeFilter) && (state.categoryFilter === 'all' || transaction.categoryId === state.categoryFilter) && matchesSearch; }).sort((a, b) => b.date.localeCompare(a.date)); }
-function companyOptions(selected) { return `<option value="">Choose a company/source</option>${[...state.store.companies].sort((a, b) => a.name.localeCompare(b.name)).map((company) => `<option value="${escapeAttr(company.id)}" ${company.id === selected ? 'selected' : ''}>${escapeHtml(company.name)}${company.alwaysHomeOfficeRelated ? ' · home office default' : ''}</option>`).join('')}<option value="${NEW_COMPANY}">＋ Create new company/source…</option>`; }
+function companyOptions(selected) { return `<option value="">Choose a company/source</option>${[...state.store.companies].sort((a, b) => a.name.localeCompare(b.name)).map((company) => `<option value="${escapeAttr(company.id)}" ${company.id === selected ? 'selected' : ''}>${escapeHtml(company.name)}${company.alwaysHomeOfficeRelated ? ' · home office default' : ''}${company.always100PercentBusinessUse ? ' · 100% business use' : ''}</option>`).join('')}<option value="${NEW_COMPANY}">＋ Create new company/source…</option>`; }
 function categoryOptions(type, selected) { const categories = state.store.categories.filter((category) => category.type === type && (category.active || category.id === selected)).sort((a, b) => a.name.localeCompare(b.name)); return `<option value="">Choose a category</option>${categories.map((category) => `<option value="${escapeAttr(category.id)}" ${category.id === selected ? 'selected' : ''}>${escapeHtml(category.name)}</option>`).join('')}`; }
 function findCompany(idValue) { return state.store.companies.find((company) => company.id === idValue); }
 function findCategory(idValue) { return state.store.categories.find((category) => category.id === idValue); }

@@ -35,8 +35,9 @@ test('time-based business use calculates 33.33% for eight hours across seven day
 });
 
 test('company home-office preference survives normalization', () => {
-  const store = normalizeStore({ companies: [{ id: 'power', name: 'Georgia Power', alwaysHomeOfficeRelated: true }] });
+  const store = normalizeStore({ companies: [{ id: 'power', name: 'Georgia Power', alwaysHomeOfficeRelated: true, always100PercentBusinessUse: true }] });
   assert.equal(store.companies[0].alwaysHomeOfficeRelated, true);
+  assert.equal(store.companies[0].always100PercentBusinessUse, true);
   assert.deepEqual(validateStore(store), []);
 });
 
@@ -95,6 +96,21 @@ test('CSV and PDF report include the combined type column and preparer note', ()
   assert.match(html, /Final tax treatment/);
   assert.ok(sortedCsv.indexOf('Electric bill') < sortedCsv.indexOf('January project'));
   assert.ok(sortedHtml.indexOf('<td>Electric bill</td>') < sortedHtml.indexOf('<td>January project</td>'));
+});
+
+test('report selections control printable sections and exported transaction columns', () => {
+  const store = sampleStore();
+  const options = { sections: { summary: false, homeOffice: false, categories: false, companies: false }, columns: { date: false, type: false, company: false, category: false, description: false, amount: true, businessUse: false, allocated: false, homeOffice: false, paid: false, notes: false } };
+  const html = buildReportHtml(store, 2025, {}, options);
+  const csv = serializeCsv(store, 2025, {}, options);
+  assert.doesNotMatch(html, /Gross income|Home-office-related costs|Totals by category|Totals by company\/source/);
+  assert.doesNotMatch(html, /<th>Date<\/th>|<th>Type<\/th>|<th>Description<\/th>/);
+  assert.match(html, /<th>Amount<\/th>/);
+  assert.equal(csv.split('\r\n')[0], '"Amount billed"');
+  assert.doesNotMatch(csv, /Income\/Expense|Company\/source|Description/);
+
+  const noTransactionDetail = serializeCsv(store, 2025, {}, { sections: { transactions: false } });
+  assert.equal(noTransactionDetail.split('\r\n').length, 2);
 });
 
 test('receipt photos normalize and survive local store validation', () => {

@@ -153,13 +153,18 @@ async function main() {
     if (!companyRow) throw new Error('Smoke Company was not present in the Companies & Sources directory');
     companyRow.querySelector('[data-action="edit-company"]').click(); await wait();
     checks.companyHomeOfficePreferencePresent = Boolean(document.getElementById('company-always-home-office'));
+    checks.company100BusinessPreferencePresent = Boolean(document.getElementById('company-always-100-business'));
+    checks.companyClassificationIncludesSoftware = [...document.querySelectorAll('#company-classification option')].some((option) => option.value === 'Software');
+    document.getElementById('company-classification').value = 'Software';
+    document.getElementById('company-always-100-business').click();
     set('company-name', 'Smoke Company Updated');
     document.getElementById('company-always-home-office').click();
     await submit('company-form');
-    checks.companyEditStaysInDirectory = document.getElementById('page-title').textContent === 'Companies & Sources' && document.body.textContent.includes('Smoke Company Updated');
+    checks.companyEditStaysInDirectory = document.getElementById('page-title').textContent === 'Companies & Sources' && document.body.textContent.includes('Smoke Company Updated') && document.body.textContent.includes('Software');
     document.querySelector('[data-view="transactions"]').click(); await wait();
     document.querySelector('[data-action="show-add"]').click(); await wait();
     const smokeCompanyOption = [...document.querySelectorAll('#transaction-company option')].find((option) => option.textContent.includes('Smoke Company Updated'));
+    checks.companyOptionShows100PercentBusinessDefault = smokeCompanyOption?.textContent.includes('100% business use');
     set('transaction-date', '090826');
     set('transaction-category', 'expense-office-supplies');
     document.getElementById('transaction-description-select').value = 'Other';
@@ -177,7 +182,7 @@ async function main() {
       && document.getElementById('transaction-amount')?.value === '12.50'
       && document.getElementById('transaction-notes')?.value === 'Keep this note while selecting a company'
       && document.getElementById('home-office-related')?.checked === true
-      && document.getElementById('business-use')?.value === '33.33';
+      && document.getElementById('business-use')?.value === '100';
     document.getElementById('transaction-company').value = '__create__';
     document.getElementById('transaction-company').dispatchEvent(new Event('change', { bubbles: true })); await wait();
     checks.createCompanyModalKeepsTransactionDraft = Boolean(document.getElementById('company-form'));
@@ -192,7 +197,7 @@ async function main() {
 
     await window.taxLedger.testEmitMenuAction('show-about'); await wait();
     checks.helpMenuOpens = Boolean(document.querySelector('[aria-labelledby="about-title"]'));
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.20');
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.21');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
     await window.taxLedger.testEmitMenuAction('show-shortcuts'); await wait();
     checks.shortcutsUseClearRows = document.querySelectorAll('.shortcut-row').length === 7
@@ -213,14 +218,39 @@ async function main() {
     document.querySelector('[data-action="preview-report"]').click(); await wait();
     checks.reportPreviewShowsDetailsAndSortableColumns = Boolean(document.querySelector('[aria-labelledby="report-preview-title"]'))
       && document.querySelectorAll('.report-preview-table tbody tr').length > 0
-      && document.querySelectorAll('.report-sort-button').length === 11;
+      && document.querySelectorAll('.report-sort-button').length === 11
+      && document.querySelectorAll('[data-report-selection]').length === 16;
+    const categoriesCheckbox = document.querySelector('[data-report-selection][data-report-group="section"][data-report-key="categories"]');
+    categoriesCheckbox.checked = false;
+    categoriesCheckbox.dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    checks.reportSectionCheckboxHidesCategoryTotals = ![...document.querySelectorAll('.report-preview-totals h3')].some((heading) => heading.textContent.includes('Totals by category'));
+    const summaryCheckbox = document.querySelector('[data-report-selection][data-report-group="section"][data-report-key="summary"]');
+    summaryCheckbox.checked = false;
+    summaryCheckbox.dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    checks.reportSectionCheckboxHidesSummaryCards = !document.querySelector('.report-preview-cards');
+    const reportTypeCheckbox = document.querySelector('[data-report-selection][data-report-group="column"][data-report-key="type"]');
+    reportTypeCheckbox.checked = false;
+    reportTypeCheckbox.dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    checks.reportFieldCheckboxHidesColumn = !document.querySelector('[data-action="report-sort"][data-key="type"]') && document.querySelectorAll('.report-sort-button').length === 10;
+    for (const [group, key] of [['section', 'categories'], ['section', 'summary']]) {
+      const checkbox = document.querySelector('[data-report-selection][data-report-group="' + group + '"][data-report-key="' + key + '"]');
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    }
     document.querySelector('[data-action="report-sort"][data-key="amount"]').click(); await wait();
     checks.reportColumnsSortByClick = document.querySelector('[data-action="report-sort"][data-key="amount"]')?.getAttribute('aria-pressed') === 'true'
       && document.querySelector('[data-action="report-sort"][data-key="amount"]')?.textContent.includes('▲');
     document.querySelector('[data-action="print-report"]').click(); await wait();
     checks.reportOffersPrinterOutput = document.body.textContent.includes('Report sent to the selected printer.');
+    const printedReportOptions = await window.taxLedger.testGetReportOptions();
+    checks.reportSelectionAppliesToPrinting = printedReportOptions?.columns?.type === false && printedReportOptions?.sections?.categories === true;
+    document.querySelector('.report-preview-modal [data-action="export-csv"]').click(); await wait();
+    const csvReportOptions = await window.taxLedger.testGetReportOptions();
+    checks.reportSelectionAppliesToCsv = csvReportOptions?.columns?.type === false && csvReportOptions?.sections?.summary === true;
     document.querySelector('[data-action="export-pdf"]').click(); await wait();
     checks.pdfNoticeStaysWithReport = document.body.textContent.includes('PDF saved to test-report.pdf') && !document.querySelector('[data-action="backup-json"]').closest('.panel').textContent.includes('test-report.pdf');
+    const pdfReportOptions = await window.taxLedger.testGetReportOptions();
+    checks.reportSelectionAppliesToPdf = pdfReportOptions?.columns?.type === false && pdfReportOptions?.sections?.summary === true;
     document.querySelector('[data-action="close-report-preview"]').click(); await wait();
     document.querySelector('[data-action="backup-json"]').click(); await wait();
     checks.backupNoticeStaysWithBackup = document.body.textContent.includes('Backup saved to test-backup.json') && !document.querySelector('[data-action="preview-report"]').closest('.panel').textContent.includes('test-backup.json');

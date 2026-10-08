@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.21 - 2026-10-08
+
+- Choose which report sections and transaction fields appear in the preview, print/PDF, and CSV output.
+- Add Software to company classifications and an optional company setting that defaults its expenses to 100% business use.
+
 ## 0.4.20 - 2026-10-08
 
 - Preserve transaction form values when selecting a company, applying its home-office default, or opening and canceling the new-company dialog.
