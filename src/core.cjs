@@ -275,7 +275,7 @@ function escapeHtml(value) {
 }
 
 function sortReportTransactions(store, transactions, sort = {}) {
-  const key = ['date', 'type', 'company', 'category', 'description', 'amount', 'businessUse', 'allocated', 'homeOffice', 'paid', 'notes'].includes(sort.key) ? sort.key : 'date';
+  const key = ['date', 'type', 'company', 'category', 'description', 'amount', 'businessUse', 'allocated', 'homeOffice', 'paid', 'paidAmount', 'notes'].includes(sort.key) ? sort.key : 'date';
   const direction = sort.direction === 'desc' ? -1 : 1;
   const companies = new Map(store.companies.map((item) => [item.id, item.name]));
   const categories = new Map(store.categories.map((item) => [item.id, item.name]));
@@ -284,7 +284,7 @@ function sortReportTransactions(store, transactions, sort = {}) {
     category: categories.get(transaction.categoryId) || 'Unknown category', description: transaction.description || '',
     amount: transaction.amountCents || 0, businessUse: Number(transaction.businessUsePercent || 0),
     allocated: businessAmountCents(transaction), homeOffice: transaction.homeOfficeRelated ? 'Yes' : 'No',
-    paid: transaction.paidDate || '', notes: transaction.notes || ''
+    paid: transaction.paidDate || '', paidAmount: transaction.paidDate ? (transaction.paidAmountCents ?? transaction.amountCents ?? 0) : 0, notes: transaction.notes || ''
   })[key];
   return [...transactions].sort((a, b) => {
     const left = value(a); const right = value(b);
@@ -296,7 +296,7 @@ function sortReportTransactions(store, transactions, sort = {}) {
 const REPORT_COLUMNS = [
   ['date', 'Date'], ['type', 'Income/Expense'], ['company', 'Company/source'], ['category', 'Category'],
   ['description', 'Description'], ['amount', 'Amount'], ['businessUse', 'Business use'],
-  ['allocated', 'Allocated'], ['homeOffice', 'Home office'], ['paid', 'Paid'], ['notes', 'Notes']
+  ['allocated', 'Allocated'], ['homeOffice', 'Home office'], ['paid', 'Paid date'], ['paidAmount', 'Amount paid'], ['notes', 'Notes']
 ];
 const REPORT_SECTIONS = ['summary', 'homeOffice', 'categories', 'companies', 'transactions'];
 
@@ -320,9 +320,7 @@ function buildReportHtml(store, year = store.taxYear, sort = {}, options) {
     const company = store.companies.find((item) => item.id === transaction.companyId)?.name || 'Unknown company';
     const category = store.categories.find((item) => item.id === transaction.categoryId)?.name || 'Unknown category';
     const allocated = transaction.type === 'expense' ? businessAmountCents(transaction) : 0;
-     const paidAmount = Number.isInteger(transaction.paidAmountCents) ? transaction.paidAmountCents : null;
-     const paidDifference = paidAmount === null ? 0 : paidAmount - transaction.amountCents;
-     const paymentNote = paidDifference ? `${formatCurrency(paidAmount)}${transaction.convenienceFee ? ' (convenience fee)' : ''}${transaction.paidDifferenceNote ? ` · ${transaction.paidDifferenceNote}` : ''}` : '';
+     const paidAmount = transaction.paidDate ? (Number.isInteger(transaction.paidAmountCents) ? transaction.paidAmountCents : transaction.amountCents) : null;
      const cells = {
        date: escapeHtml(formatDate(transaction.date)), type: transaction.type === 'income' ? 'Income' : 'Expense',
        company: escapeHtml(company), category: escapeHtml(category), description: escapeHtml(transaction.description),
@@ -330,7 +328,8 @@ function buildReportHtml(store, year = store.taxYear, sort = {}, options) {
        businessUse: `<span class="money">${formatPercent(transaction.businessUsePercent)}</span>`,
        allocated: `<span class="money">${transaction.type === 'expense' ? formatCurrency(allocated) : '—'}</span>`,
        homeOffice: transaction.homeOfficeRelated ? 'Yes' : '—',
-       paid: transaction.paidDate ? `${escapeHtml(formatDate(transaction.paidDate))}${paymentNote ? `<br>${escapeHtml(paymentNote)}` : ''}` : '—',
+       paid: transaction.paidDate ? escapeHtml(formatDate(transaction.paidDate)) : '—',
+       paidAmount: paidAmount === null ? '—' : `<span class="money">${formatCurrency(paidAmount)}</span>`,
        notes: escapeHtml(transaction.notes)
      };
      return `<tr>${selectedColumns.map(([key]) => `<td>${cells[key]}</td>`).join('')}</tr>`;
@@ -366,13 +365,13 @@ function serializeCsv(store, year = store.taxYear, sort = {}, options) {
     ['category', 'Category', (t, names) => names.categories.get(t.categoryId) || 'Unknown category'], ['description', 'Description', (t) => t.description],
     ['amount', 'Amount billed', (t) => (t.amountCents / 100).toFixed(2)], ['businessUse', 'Business use %', (t) => t.businessUsePercent ?? ''],
     ['allocated', 'Allocated business amount', (t) => (businessAmountCents(t) / 100).toFixed(2)], ['homeOffice', 'Home office related', (t) => t.homeOfficeRelated ? 'Yes' : 'No'],
-    ['paid', 'Paid date', (t) => t.paidDate], ['paid', 'Amount paid', (_t, _names, paid) => paid.paidAmount === null ? '' : (paid.paidAmount / 100).toFixed(2)],
+    ['paid', 'Paid date', (t) => t.paidDate], ['paidAmount', 'Amount paid', (_t, _names, paid) => paid.paidAmount === null ? '' : (paid.paidAmount / 100).toFixed(2)],
     ['paid', 'Paid difference', (_t, _names, paid) => paid.paidDifference === null ? '' : (paid.paidDifference / 100).toFixed(2)],
     ['paid', 'Convenience fee', (t) => t.convenienceFee ? 'Yes' : 'No'], ['notes', 'Notes', (t, _names, paid) => t.paidDifferenceNote ? `${t.paidDifferenceNote}${t.notes ? ` · ${t.notes}` : ''}` : t.notes]
   ].filter(([key]) => selection.columns[key]);
   const names = { companies: new Map(store.companies.map((item) => [item.id, item.name])), categories: new Map(store.categories.map((item) => [item.id, item.name])) };
   const rows = selection.sections.transactions ? sortReportTransactions(store, transactionsForYear(store, year), sort).map((transaction) => {
-    const paidAmount = Number.isInteger(transaction.paidAmountCents) ? transaction.paidAmountCents : null;
+    const paidAmount = transaction.paidDate ? (Number.isInteger(transaction.paidAmountCents) ? transaction.paidAmountCents : transaction.amountCents) : null;
     const paidDifference = paidAmount === null ? null : paidAmount - transaction.amountCents;
     const paid = { paidAmount, paidDifference };
     return columns.map(([, , value]) => value(transaction, names, paid));

@@ -135,6 +135,7 @@ async function main() {
     document.getElementById('convenience-fee').click();
     document.getElementById('payment-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await wait();
     checks.paymentStatusPersists = document.querySelector('.data-table')?.textContent.includes('Paid') && document.querySelector('.data-table')?.textContent.includes('09/10/2026') && document.querySelector('.data-table')?.textContent.includes('fee');
+    checks.paidAmountShownInTransactionColumns = document.querySelector('.data-table thead')?.textContent.includes('Amount paid') && document.querySelector('.data-table tbody')?.textContent.includes('$12.75');
     checks.compactDateSelectsYear = document.getElementById('year-select')?.value === '2026' && document.body.textContent.includes('09/08/2026');
     document.querySelector('[data-action="edit-transaction"]')?.click(); await wait();
     checks.backToAllTransactionsButton = document.querySelector('[data-action="cancel-form"]')?.textContent.includes('Back to all transactions') === true;
@@ -197,7 +198,7 @@ async function main() {
 
     await window.taxLedger.testEmitMenuAction('show-about'); await wait();
     checks.helpMenuOpens = Boolean(document.querySelector('[aria-labelledby="about-title"]'));
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.21');
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.22');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
     await window.taxLedger.testEmitMenuAction('show-shortcuts'); await wait();
     checks.shortcutsUseClearRows = document.querySelectorAll('.shortcut-row').length === 7
@@ -218,8 +219,9 @@ async function main() {
     document.querySelector('[data-action="preview-report"]').click(); await wait();
     checks.reportPreviewShowsDetailsAndSortableColumns = Boolean(document.querySelector('[aria-labelledby="report-preview-title"]'))
       && document.querySelectorAll('.report-preview-table tbody tr').length > 0
-      && document.querySelectorAll('.report-sort-button').length === 11
-      && document.querySelectorAll('[data-report-selection]').length === 16;
+      && document.querySelectorAll('.report-sort-button').length === 12
+      && document.querySelectorAll('[data-report-selection]').length === 17;
+    checks.reportPaidAmountColumnCanSort = Boolean(document.querySelector('[data-action="report-sort"][data-key="paidAmount"]'));
     const categoriesCheckbox = document.querySelector('[data-report-selection][data-report-group="section"][data-report-key="categories"]');
     categoriesCheckbox.checked = false;
     categoriesCheckbox.dispatchEvent(new Event('change', { bubbles: true })); await wait();
@@ -231,7 +233,7 @@ async function main() {
     const reportTypeCheckbox = document.querySelector('[data-report-selection][data-report-group="column"][data-report-key="type"]');
     reportTypeCheckbox.checked = false;
     reportTypeCheckbox.dispatchEvent(new Event('change', { bubbles: true })); await wait();
-    checks.reportFieldCheckboxHidesColumn = !document.querySelector('[data-action="report-sort"][data-key="type"]') && document.querySelectorAll('.report-sort-button').length === 10;
+    checks.reportFieldCheckboxHidesColumn = !document.querySelector('[data-action="report-sort"][data-key="type"]') && document.querySelectorAll('.report-sort-button').length === 11;
     for (const [group, key] of [['section', 'categories'], ['section', 'summary']]) {
       const checkbox = document.querySelector('[data-report-selection][data-report-group="' + group + '"][data-report-key="' + key + '"]');
       checkbox.checked = true;

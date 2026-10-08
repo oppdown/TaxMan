@@ -3,10 +3,10 @@
 const TAX_YEAR = 2025;
 const NEW_COMPANY = '__create__';
 const DEFAULT_STORAGE_SETTINGS = { closeBehavior: 'ask', backupRetention: 7, backupReminderDays: 30, lastManualBackupAt: '' };
-const REPORT_COLUMNS = [['date', 'Date'], ['type', 'Type'], ['company', 'Company/source'], ['category', 'Category'], ['description', 'Description'], ['amount', 'Amount'], ['businessUse', 'Business use'], ['allocated', 'Allocated'], ['homeOffice', 'Home office'], ['paid', 'Paid'], ['notes', 'Notes']];
+const REPORT_COLUMNS = [['date', 'Date'], ['type', 'Type'], ['company', 'Company/source'], ['category', 'Category'], ['description', 'Description'], ['amount', 'Amount'], ['businessUse', 'Business use'], ['allocated', 'Allocated'], ['homeOffice', 'Home office'], ['paid', 'Paid date'], ['paidAmount', 'Amount paid'], ['notes', 'Notes']];
 const REPORT_SECTIONS = [['summary', 'Summary cards'], ['homeOffice', 'Home-office totals'], ['categories', 'Totals by category'], ['companies', 'Totals by company/source'], ['transactions', 'Transaction detail']];
 const allReportOptions = () => ({ sections: Object.fromEntries(REPORT_SECTIONS.map(([key]) => [key, true])), columns: Object.fromEntries(REPORT_COLUMNS.map(([key]) => [key, true])) });
-const state = { store: null, workspace: { configured: false, available: false, path: '', storage: {}, storageSettings: { ...DEFAULT_STORAGE_SETTINGS } }, view: 'dashboard', selectedYear: 2025, transactionDraft: null, reportPreview: false, reportSections: allReportOptions().sections, reportColumns: allReportOptions().columns, reportSortKey: 'date', reportSortDirection: 'asc', phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, companionLastSent: false, companionAppendNext: false, pendingPhonePhoto: null, paymentModal: null, workUseModal: false, receiptEditor: null, companionImageEditor: null, cropDrag: null, descriptionModal: false, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, receiptZoom: 1, appVersion: '0.4.21', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
+const state = { store: null, workspace: { configured: false, available: false, path: '', storage: {}, storageSettings: { ...DEFAULT_STORAGE_SETTINGS } }, view: 'dashboard', selectedYear: 2025, transactionDraft: null, reportPreview: false, reportSections: allReportOptions().sections, reportColumns: allReportOptions().columns, reportSortKey: 'date', reportSortDirection: 'asc', phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, companionLastSent: false, companionAppendNext: false, pendingPhonePhoto: null, paymentModal: null, workUseModal: false, receiptEditor: null, companionImageEditor: null, cropDrag: null, descriptionModal: false, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, receiptZoom: 1, appVersion: '0.4.22', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
 let companionPollTimer;
 let pairingPollTimer;
 let qrScannerStream;
@@ -403,9 +403,15 @@ function transactionTable(items, actions) {
     const category = findCategory(transaction.categoryId)?.name || 'Unknown category';
     const allocated = transaction.type === 'expense' ? businessAmount(transaction) : 0;
   const paymentStatus = transaction.paidDate ? `<span class="paid-pill">Paid</span><br><span class="muted">${escapeHtml(formatDateDisplay(transaction.paidDate))}${paymentDifferenceMarkup(transaction)}</span>` : actions ? `<button class="secondary-button compact-button" data-action="mark-paid" data-id="${escapeAttr(transaction.id)}">Mark paid</button>` : '<span class="unpaid-pill">Unpaid</span>';
-  return `<tr><td>${escapeHtml(formatDateDisplay(transaction.date))}</td><td><span class="type-pill ${transaction.type === 'income' ? 'type-income' : 'type-expense'}">${transaction.type === 'income' ? 'Income' : 'Expense'}</span></td><td><strong>${escapeHtml(company)}</strong><br><span class="muted">${escapeHtml(category)}</span></td><td>${escapeHtml(transaction.description)}${transaction.homeOfficeRelated ? '<br><span class="tag">Home office</span>' : ''}</td><td class="money">${money(transaction.amountCents)}</td><td class="money">${transaction.type === 'expense' ? `${formatPercent(transaction.businessUsePercent)}<br><span class="muted">${money(allocated)}</span>` : '—'}</td><td class="payment-status">${paymentStatus}</td>${actions ? `<td class="row-actions"><button class="icon-button" data-action="edit-transaction" data-id="${escapeAttr(transaction.id)}" title="Edit">Edit</button><button class="icon-button danger-text" data-action="delete-transaction" data-id="${escapeAttr(transaction.id)}" title="Delete">Delete</button></td>` : ''}</tr>`;
+  const paidAmount = getPaidAmountCents(transaction);
+  return `<tr><td>${escapeHtml(formatDateDisplay(transaction.date))}</td><td><span class="type-pill ${transaction.type === 'income' ? 'type-income' : 'type-expense'}">${transaction.type === 'income' ? 'Income' : 'Expense'}</span></td><td><strong>${escapeHtml(company)}</strong><br><span class="muted">${escapeHtml(category)}</span></td><td>${escapeHtml(transaction.description)}${transaction.homeOfficeRelated ? '<br><span class="tag">Home office</span>' : ''}</td><td class="money">${money(transaction.amountCents)}</td><td class="money">${transaction.type === 'expense' ? `${formatPercent(transaction.businessUsePercent)}<br><span class="muted">${money(allocated)}</span>` : '—'}</td><td class="money amount-paid">${paidAmount === null ? '—' : money(paidAmount)}</td><td class="payment-status">${paymentStatus}</td>${actions ? `<td class="row-actions"><button class="icon-button" data-action="edit-transaction" data-id="${escapeAttr(transaction.id)}" title="Edit">Edit</button><button class="icon-button danger-text" data-action="delete-transaction" data-id="${escapeAttr(transaction.id)}" title="Delete">Delete</button></td>` : ''}</tr>`;
   }).join('');
-  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Type</th><th>Company/source &amp; category</th><th>Description</th><th>Amount</th><th>Business use<br>Allocated</th><th>Payment</th>${actions ? '<th>Actions</th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Type</th><th>Company/source &amp; category</th><th>Description</th><th>Amount billed</th><th>Business use<br>Allocated</th><th>Amount paid</th><th>Payment</th>${actions ? '<th>Actions</th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function getPaidAmountCents(transaction) {
+  if (!transaction?.paidDate) return null;
+  return Number.isInteger(transaction.paidAmountCents) ? transaction.paidAmountCents : transaction.amountCents;
 }
 
 function paymentDifferenceMarkup(transaction) {
@@ -451,7 +457,7 @@ function reportTransactions() {
     company: companyName, category: categoryName, description: (item) => item.description || '',
     amount: (item) => item.amountCents || 0, businessUse: (item) => Number(item.businessUsePercent || 0),
     allocated: (item) => businessAmount(item), homeOffice: (item) => item.homeOfficeRelated ? 'Yes' : 'No',
-    paid: (item) => item.paidDate || '', notes: (item) => item.notes || ''
+    paid: (item) => item.paidDate || '', paidAmount: (item) => getPaidAmountCents(item) ?? 0, notes: (item) => item.notes || ''
   };
   const direction = state.reportSortDirection === 'desc' ? -1 : 1;
   return transactionsForYear(state.store, state.selectedYear).sort((a, b) => {
@@ -490,10 +496,7 @@ function renderReportPreviewModal() {
   const selectedColumns = REPORT_COLUMNS.filter(([key]) => state.reportColumns[key]);
   const paidCell = (transaction) => {
     if (!transaction.paidDate) return '—';
-    const paidAmount = Number.isInteger(transaction.paidAmountCents) ? transaction.paidAmountCents : null;
-    const difference = paidAmount === null ? 0 : paidAmount - transaction.amountCents;
-    const note = difference ? `${money(paidAmount)}${transaction.convenienceFee ? ' (convenience fee)' : ''}${transaction.paidDifferenceNote ? ` · ${transaction.paidDifferenceNote}` : ''}` : '';
-    return `${escapeHtml(formatDateDisplay(transaction.paidDate))}${note ? `<br>${escapeHtml(note)}` : ''}`;
+    return escapeHtml(formatDateDisplay(transaction.paidDate));
   };
   const categories = new Map();
   const companies = new Map();
@@ -518,7 +521,9 @@ function renderReportPreviewModal() {
       description: escapeHtml(transaction.description), amount: `<span class="money">${money(transaction.amountCents)}</span>`,
       businessUse: `<span class="money">${transaction.type === 'expense' ? formatPercent(transaction.businessUsePercent) : '—'}</span>`,
       allocated: `<span class="money">${transaction.type === 'expense' ? money(businessAmount(transaction)) : '—'}</span>`,
-      homeOffice: transaction.homeOfficeRelated ? 'Yes' : '—', paid: paidCell(transaction), notes: escapeHtml(transaction.notes || '—')
+      homeOffice: transaction.homeOfficeRelated ? 'Yes' : '—', paid: paidCell(transaction),
+      paidAmount: getPaidAmountCents(transaction) === null ? '—' : `<span class="money">${money(getPaidAmountCents(transaction))}</span>`,
+      notes: escapeHtml(transaction.notes || '—')
     };
     return `<tr>${selectedColumns.map(([key]) => `<td>${cells[key]}</td>`).join('')}</tr>`;
   }).join('');

@@ -99,8 +99,8 @@ if (!window.taxLedger) {
     const companies = new Map(store.companies.map((item) => [item.id, item.name]));
     const categories = new Map(store.categories.map((item) => [item.id, item.name]));
     const headers = ['Date', 'Income/Expense', 'Company/source', 'Category', 'Description', 'Amount billed', 'Business use %', 'Allocated business amount', 'Home office related', 'Paid date', 'Amount paid', 'Paid difference', 'Convenience fee', 'Notes'];
-    const rows = store.transactions.filter((item) => item.taxYear === Number(year)).map((item) => { const paidAmount = Number.isInteger(item.paidAmountCents) ? item.paidAmountCents : null; const paidDifference = paidAmount === null ? null : paidAmount - (item.amountCents || 0); return [item.date, item.type === 'income' ? 'Income' : 'Expense', companies.get(item.companyId) || 'Unknown company', categories.get(item.categoryId) || 'Unknown category', item.description, ((item.amountCents || 0) / 100).toFixed(2), item.businessUsePercent ?? '', (((item.amountCents || 0) * Number(item.businessUsePercent ?? 0) / 100) / 100).toFixed(2), item.homeOfficeRelated ? 'Yes' : 'No', item.paidDate || '', paidAmount === null ? '' : (paidAmount / 100).toFixed(2), paidDifference === null ? '' : (paidDifference / 100).toFixed(2), item.convenienceFee ? 'Yes' : 'No', item.paidDifferenceNote ? `${item.paidDifferenceNote}${item.notes ? ` · ${item.notes}` : ''}` : item.notes]; });
-    const columns = [['date', 0], ['type', 1], ['company', 2], ['category', 3], ['description', 4], ['amount', 5], ['businessUse', 6], ['allocated', 7], ['homeOffice', 8], ['paid', 9], ['paid', 10], ['paid', 11], ['paid', 12], ['notes', 13]];
+    const rows = store.transactions.filter((item) => item.taxYear === Number(year)).map((item) => { const paidAmount = item.paidDate ? (Number.isInteger(item.paidAmountCents) ? item.paidAmountCents : item.amountCents) : null; const paidDifference = paidAmount === null ? null : paidAmount - (item.amountCents || 0); return [item.date, item.type === 'income' ? 'Income' : 'Expense', companies.get(item.companyId) || 'Unknown company', categories.get(item.categoryId) || 'Unknown category', item.description, ((item.amountCents || 0) / 100).toFixed(2), item.businessUsePercent ?? '', (((item.amountCents || 0) * Number(item.businessUsePercent ?? 0) / 100) / 100).toFixed(2), item.homeOfficeRelated ? 'Yes' : 'No', item.paidDate || '', paidAmount === null ? '' : (paidAmount / 100).toFixed(2), paidDifference === null ? '' : (paidDifference / 100).toFixed(2), item.convenienceFee ? 'Yes' : 'No', item.paidDifferenceNote ? `${item.paidDifferenceNote}${item.notes ? ` · ${item.notes}` : ''}` : item.notes]; });
+    const columns = [['date', 0], ['type', 1], ['company', 2], ['category', 3], ['description', 4], ['amount', 5], ['businessUse', 6], ['allocated', 7], ['homeOffice', 8], ['paid', 9], ['paidAmount', 10], ['paid', 11], ['paid', 12], ['notes', 13]];
     const included = columns.map(([key], index) => typeof options.columns?.[key] === 'boolean' ? options.columns[key] : true);
     const selectedHeaders = headers.filter((_header, index) => included[index]);
     const selectedRows = options.sections?.transactions === false ? [] : rows.map((row) => row.filter((_value, index) => included[index]));
@@ -128,7 +128,7 @@ if (!window.taxLedger) {
     exportPdf: async () => { window.print(); return { canceled: true }; },
     openFolder: async () => {},
     checkForUpdates: async () => { window.open('https://taxman.speedy-star-8288.chatgpt.site/download.html', '_blank'); },
-  getVersion: async () => '0.4.21',
+  getVersion: async () => '0.4.22',
     startPhoneCapture: async () => ({ direct: true }),
     stopPhoneCapture: async () => {},
     getPairedComputer: async () => loadPairedComputer(),

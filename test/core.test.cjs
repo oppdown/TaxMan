@@ -100,7 +100,7 @@ test('CSV and PDF report include the combined type column and preparer note', ()
 
 test('report selections control printable sections and exported transaction columns', () => {
   const store = sampleStore();
-  const options = { sections: { summary: false, homeOffice: false, categories: false, companies: false }, columns: { date: false, type: false, company: false, category: false, description: false, amount: true, businessUse: false, allocated: false, homeOffice: false, paid: false, notes: false } };
+  const options = { sections: { summary: false, homeOffice: false, categories: false, companies: false }, columns: { date: false, type: false, company: false, category: false, description: false, amount: true, businessUse: false, allocated: false, homeOffice: false, paid: false, paidAmount: false, notes: false } };
   const html = buildReportHtml(store, 2025, {}, options);
   const csv = serializeCsv(store, 2025, {}, options);
   assert.doesNotMatch(html, /Gross income|Home-office-related costs|Totals by category|Totals by company\/source/);
@@ -108,6 +108,16 @@ test('report selections control printable sections and exported transaction colu
   assert.match(html, /<th>Amount<\/th>/);
   assert.equal(csv.split('\r\n')[0], '"Amount billed"');
   assert.doesNotMatch(csv, /Income\/Expense|Company\/source|Description/);
+
+  store.transactions[1].paidDate = '2025-02-05';
+  store.transactions[1].paidAmountCents = 13000;
+  const paidOnly = { sections: { summary: false, homeOffice: false, categories: false, companies: false }, columns: { date: false, type: false, company: false, category: false, description: false, amount: false, businessUse: false, allocated: false, homeOffice: false, paid: false, paidAmount: true, notes: false } };
+  const paidCsv = serializeCsv(store, 2025, {}, paidOnly);
+  const paidHtml = buildReportHtml(store, 2025, {}, paidOnly);
+  assert.equal(paidCsv.split('\r\n')[0], '"Amount paid"');
+  assert.match(paidCsv, /130\.00/);
+  assert.match(paidHtml, /<th>Amount paid<\/th>/);
+  assert.match(paidHtml, /\$130\.00/);
 
   const noTransactionDetail = serializeCsv(store, 2025, {}, { sections: { transactions: false } });
   assert.equal(noTransactionDetail.split('\r\n').length, 2);

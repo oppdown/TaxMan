@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.22 - 2026-10-08
+
+- Show the actual amount paid as its own column in the dashboard, transaction ledger, report preview, and printable/exported reports.
+- Let report users select and sort the Amount paid column independently from the paid date.
+
 ## 0.4.21 - 2026-10-08
 
 - Choose which report sections and transaction fields appear in the preview, print/PDF, and CSV output.
