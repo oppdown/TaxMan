@@ -28,6 +28,12 @@ async function main() {
   const uploadResult = await upload.json();
   assert.equal(upload.ok, true);
   assert.equal(uploadResult.ok, true);
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const receiptRendered = await window.webContents.executeJavaScript("Boolean(document.querySelector('.receipt-pages img'))");
+    if (receiptRendered) break;
+    await wait(50);
+  }
+  assert.equal(await window.webContents.executeJavaScript("Boolean(document.querySelector('.receipt-pages img'))"), true);
   const next = await fetch(`${paired.baseUrl}/paired/next?token=${encodeURIComponent(paired.token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'append' }) });
   const nextResult = await next.json();
   assert.equal(next.ok, true);

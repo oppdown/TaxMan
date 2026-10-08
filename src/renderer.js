@@ -3,7 +3,7 @@
 const TAX_YEAR = 2025;
 const NEW_COMPANY = '__create__';
 const DEFAULT_STORAGE_SETTINGS = { closeBehavior: 'ask', backupRetention: 7, backupReminderDays: 30, lastManualBackupAt: '' };
-const state = { store: null, workspace: { configured: false, available: false, path: '', storage: {}, storageSettings: { ...DEFAULT_STORAGE_SETTINGS } }, view: 'dashboard', selectedYear: 2025, transactionDraft: null, reportPreview: false, reportSortKey: 'date', reportSortDirection: 'asc', phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, companionLastSent: false, companionAppendNext: false, pendingPhonePhoto: null, paymentModal: null, workUseModal: false, receiptEditor: null, companionImageEditor: null, cropDrag: null, descriptionModal: false, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, receiptZoom: 1, appVersion: '0.4.19', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
+const state = { store: null, workspace: { configured: false, available: false, path: '', storage: {}, storageSettings: { ...DEFAULT_STORAGE_SETTINGS } }, view: 'dashboard', selectedYear: 2025, transactionDraft: null, reportPreview: false, reportSortKey: 'date', reportSortDirection: 'asc', phoneCapture: null, phonePairing: null, companionPairing: false, companionPairingData: null, qrScanner: false, qrScannerMessage: '', companionComputer: null, companionRequest: null, companionLastSent: false, companionAppendNext: false, pendingPhonePhoto: null, paymentModal: null, workUseModal: false, receiptEditor: null, companionImageEditor: null, cropDrag: null, descriptionModal: false, aboutOpen: false, shortcutsOpen: false, openMenu: null, ocr: null, receiptZoom: 1, appVersion: '0.4.20', search: '', typeFilter: 'all', categoryFilter: 'all', lastPdfPath: '', lastCsvPath: '', lastBackupPath: '' };
 let companionPollTimer;
 let pairingPollTimer;
 let qrScannerStream;
@@ -52,16 +52,23 @@ function bindEvents() {
       state.transactionDraft.description = event.target.value === 'Other' ? '' : event.target.value;
       render();
     }
-    if (event.target.id === 'transaction-company' && event.target.value === NEW_COMPANY) {
-      state.companyModal = { editId: null, returnToTransaction: true };
-      render();
-    }
-    if (event.target.id === 'transaction-company' && event.target.value !== NEW_COMPANY) {
-      const company = findCompany(event.target.value);
-      if (company?.alwaysHomeOfficeRelated && state.transactionDraft?.type === 'expense') {
-        state.transactionDraft.homeOfficeRelated = true;
-        state.transactionDraft.businessUsePercent = calculateTimeBusinessUsePercent(state.store.workTime);
+    if (event.target.id === 'transaction-company') {
+      const selectedCompanyId = event.target.value;
+      const previousCompanyId = state.transactionDraft?.companyId || '';
+      captureTransactionDraftFromForm();
+      if (selectedCompanyId === NEW_COMPANY) {
+        // The temporary option is not a saved company. Keep the prior value if
+        // the user cancels the modal, while preserving all other form fields.
+        if (state.transactionDraft) state.transactionDraft.companyId = previousCompanyId;
+        state.companyModal = { editId: null, returnToTransaction: true };
         render();
+      } else {
+        const company = findCompany(selectedCompanyId);
+        if (company?.alwaysHomeOfficeRelated && state.transactionDraft?.type === 'expense') {
+          state.transactionDraft.homeOfficeRelated = true;
+          state.transactionDraft.businessUsePercent = calculateTimeBusinessUsePercent(state.store.workTime);
+          render();
+        }
       }
     }
     if (event.target.id === 'existing-company') {

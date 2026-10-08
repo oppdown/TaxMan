@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.20 - 2026-10-08
+
+- Preserve transaction form values when selecting a company, applying its home-office default, or opening and canceling the new-company dialog.
+
 ## 0.4.19 - 2026-10-08
 
 - Preserve transaction details while changing transaction type or category.

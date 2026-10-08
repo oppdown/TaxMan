@@ -160,14 +160,39 @@ async function main() {
     document.querySelector('[data-view="transactions"]').click(); await wait();
     document.querySelector('[data-action="show-add"]').click(); await wait();
     const smokeCompanyOption = [...document.querySelectorAll('#transaction-company option')].find((option) => option.textContent.includes('Smoke Company Updated'));
+    set('transaction-date', '090826');
+    set('transaction-category', 'expense-office-supplies');
+    document.getElementById('transaction-description-select').value = 'Other';
+    document.getElementById('transaction-description-select').dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    set('transaction-description', 'Company dropdown test');
+    set('transaction-amount', '12.50');
+    set('transaction-notes', 'Keep this note while selecting a company');
+    document.getElementById('business-use').value = '42';
     document.getElementById('transaction-company').value = smokeCompanyOption.value;
     document.getElementById('transaction-company').dispatchEvent(new Event('change', { bubbles: true })); await wait();
-    checks.companyHomeOfficeDefaultsNewExpense = document.getElementById('home-office-related')?.checked === true && document.getElementById('business-use')?.value === '33.33';
+    checks.companySelectionKeepsTransactionDraft = document.getElementById('transaction-date')?.value === '090826'
+      && document.getElementById('transaction-company')?.value === smokeCompanyOption.value
+      && document.getElementById('transaction-category')?.value === 'expense-office-supplies'
+      && document.getElementById('transaction-description')?.value === 'Company dropdown test'
+      && document.getElementById('transaction-amount')?.value === '12.50'
+      && document.getElementById('transaction-notes')?.value === 'Keep this note while selecting a company'
+      && document.getElementById('home-office-related')?.checked === true
+      && document.getElementById('business-use')?.value === '33.33';
+    document.getElementById('transaction-company').value = '__create__';
+    document.getElementById('transaction-company').dispatchEvent(new Event('change', { bubbles: true })); await wait();
+    checks.createCompanyModalKeepsTransactionDraft = Boolean(document.getElementById('company-form'));
+    document.querySelector('[data-action="close-modal"]')?.click(); await wait();
+    checks.cancelCreateCompanyKeepsTransactionDraft = document.getElementById('transaction-date')?.value === '090826'
+      && document.getElementById('transaction-company')?.value === smokeCompanyOption.value
+      && document.getElementById('transaction-category')?.value === 'expense-office-supplies'
+      && document.getElementById('transaction-description')?.value === 'Company dropdown test'
+      && document.getElementById('transaction-amount')?.value === '12.50'
+      && document.getElementById('transaction-notes')?.value === 'Keep this note while selecting a company';
     document.querySelector('[data-action="cancel-form"]').click(); await wait();
 
     await window.taxLedger.testEmitMenuAction('show-about'); await wait();
     checks.helpMenuOpens = Boolean(document.querySelector('[aria-labelledby="about-title"]'));
-    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.19');
+    checks.aboutShowsVersion = document.body.textContent.includes('Version 0.4.20');
     document.querySelector('[data-action="close-modal"]').click(); await wait();
     await window.taxLedger.testEmitMenuAction('show-shortcuts'); await wait();
     checks.shortcutsUseClearRows = document.querySelectorAll('.shortcut-row').length === 7
